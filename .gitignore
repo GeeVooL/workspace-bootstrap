@@ -1,0 +1,15 @@
+# macOS metadata
+.DS_Store
+
+# Local Python and Ansible runtime files
+.venv/
+__pycache__/
+*.py[cod]
+.ansible/
+*.retry
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+.vault-password*

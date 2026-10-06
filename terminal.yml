@@ -1,0 +1,107 @@
+---
+# Run locally as your normal user, without sudo.
+- name: Configure the Fish terminal environment
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  become: false
+  vars:
+    terminal_config_root: "{{ ansible_facts.env.XDG_CONFIG_HOME | default(ansible_facts.user_dir ~ '/.config', true) }}"
+    configure_ghostty: true
+    ghostty_config_path: "{{ (ansible_facts.user_dir ~ '/Library/Application Support/com.mitchellh.ghostty/config.ghostty') if ansible_facts.system == 'Darwin' else (terminal_config_root ~ '/ghostty/config.ghostty') }}"
+    terminal_search_path: "{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.user_dir }}/.local/bin"
+
+  environment:
+    PATH: "{{ terminal_search_path }}"
+
+  pre_tasks:
+    - name: Require macOS or Linux and a normal user
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system in ['Darwin', 'Linux']
+          - ansible_facts.user_uid != 0
+        fail_msg: Run this locally as your normal account on macOS or Linux, without sudo.
+
+    - name: Locate required tools
+      ansible.builtin.shell: "command -v {{ item | quote }}"
+      args:
+        executable: /bin/sh
+      loop:
+        - fish
+        - git
+        - starship
+        - fzf
+        - zoxide
+      register: terminal_tools
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Require installed tools before modifying configuration
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout.startswith('/')
+        fail_msg: "Install {{ item.item }} and make it available on PATH, then rerun. See README.md."
+      loop: "{{ terminal_tools.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Remember tool paths
+      ansible.builtin.set_fact:
+        fish_executable: "{{ terminal_tools.results[0].stdout }}"
+        fzf_executable: "{{ terminal_tools.results[3].stdout }}"
+
+    - name: Check installed fzf supports Fish integration
+      ansible.builtin.command:
+        argv: ["{{ fzf_executable }}", --fish]
+      register: fzf_integration
+      changed_when: false
+      check_mode: false
+      failed_when: false
+
+    - name: Require a compatible fzf version
+      ansible.builtin.assert:
+        that: fzf_integration.rc == 0
+        fail_msg: Upgrade fzf to a version supporting 'fzf --fish' (0.48 or later).
+
+  tasks:
+    - name: Create Fish configuration directory
+      ansible.builtin.file:
+        path: "{{ terminal_config_root }}/fish/conf.d"
+        state: directory
+        mode: '0700'
+
+    - name: Install the Fish configuration snippets
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/files/fish/{{ item }}"
+        dest: "{{ terminal_config_root }}/fish/conf.d/{{ item }}"
+        mode: '0644'
+        backup: true
+        validate: "{{ fish_executable }} --no-execute %s"
+      loop:
+        - git-abbreviations.fish
+        - starship.fish
+        - fzf.fish
+        - zoxide.fish
+
+    - name: Create Ghostty configuration directory
+      ansible.builtin.file:
+        path: "{{ ghostty_config_path | dirname }}"
+        state: directory
+        mode: '0700'
+      when: configure_ghostty | bool
+
+    - name: Launch Fish in Ghostty
+      ansible.builtin.lineinfile:
+        path: "{{ ghostty_config_path }}"
+        regexp: '^\s*command\s*='
+        line: "command = {{ fish_executable }}"
+        create: true
+        mode: '0644'
+        backup: true
+      when: configure_ghostty | bool
+
+    - name: Explain activation
+      ansible.builtin.debug:
+        msg: Reload Ghostty configuration and open a new tab. The account login shell is unchanged.
