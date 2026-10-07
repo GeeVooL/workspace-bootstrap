@@ -1,0 +1,12 @@
+---
+- name: Determine whether a native package is available
+  ansible.builtin.set_fact:
+    application_native_available: "{{ {'Debian': 'deb', 'RedHat': 'rpm', 'Suse': 'rpm'}.get(ansible_facts.os_family, '') in application.urls }}"
+
+- name: Prefer the configured native installer
+  ansible.builtin.include_tasks: native.yml
+  when: application_native_available
+
+- name: Try Snap when no native package is configured
+  ansible.builtin.include_tasks: snap.yml
+  when: not application_native_available

@@ -31,6 +31,8 @@ s = s.replace('''ansible.builtin.rpm_key:
             argv: [fixture-key, "{{ application.signing_key }}"]''')
 s = s.replace('          become: true\n', '')
 native.write_text(s)
+snap_tasks = root / 'roles/applications/tasks/snap.yml'
+snap_tasks.write_text(snap_tasks.read_text().replace('      become: true\n', ''))
 play = root / 'play.yml'
 play.write_text('''- hosts: workstations
   gather_facts: false
@@ -57,6 +59,12 @@ elif name in ['dpkg-query', 'rpm']:
 elif name in ['fixture-apt', 'dnf', 'dnf5', 'yum', 'zypper']:
     package = pathlib.Path(args[-1])
     assert package.exists() and package.suffix == ('.deb' if name == 'fixture-apt' else '.rpm')
+    state.touch()
+elif name == 'snap':
+    if (root / 'broken-snap').exists(): sys.exit(2)
+    if args == ['list', 'typora']: sys.exit(0 if state.exists() else 1)
+    assert args == ['install', 'typora'], args
+    if (root / 'failed-install').exists(): sys.exit(1)
     state.touch()
 elif name == 'fixture-key':
     assert args == ['https://packages.microsoft.com/keys/microsoft.asc']
@@ -210,6 +218,37 @@ for arch in ['x86_64', 'aarch64']:
 
 v = variables('Linux', 'typora-rpm', 'RedHat', 'dnf')
 v['applications_enabled_categories'] = ['writing']
-assert 'has no configured rpm package' in run('typora-rpm', v, True, expected=2)
+for check in [True, False]:
+    output = run('typora-rpm-' + str(check), v, check)
+    assert 'Skipping Typora: no native installer' in output and 'changed=0' in output
+assert not (root / 'typora-rpm/state').exists()
+for family in ['RedHat', 'Archlinux']:
+    name = 'typora-snap-' + family
+    v = variables('Linux', name, family, 'dnf' if family == 'RedHat' else 'pacman')
+    v['applications_enabled_categories'] = ['writing']
+    snap = Path(v['applications_search_path']) / 'snap'
+    snap.parent.mkdir(parents=True)
+    snap.symlink_to(fixture)
+    assert 'changed=0' in run(name + '-workplace', dict(v, workplace_only=True))
+    assert not (root / name / 'state').exists()
+    assert 'changed=1' in run(name + '-check', v, True)
+    assert not (root / name / 'state/installed').exists()
+    run(name + '-apply', v)
+    assert (root / name / 'state/installed').exists()
+    assert 'changed=0' in run(name + '-repeat', v)
+    calls = [json.loads(line) for line in (root / name / 'state/calls').read_text().splitlines()]
+    assert calls.count(['snap', 'install', 'typora']) == 1
+    assert all(call[0] == 'snap' for call in calls)
+for failure in ['broken-snap', 'failed-install']:
+    v = variables('Linux', failure, 'RedHat', 'dnf')
+    v['applications_enabled_categories'] = ['writing']
+    snap = Path(v['applications_search_path']) / 'snap'
+    snap.parent.mkdir(parents=True)
+    snap.symlink_to(fixture)
+    state = root / failure / 'state'
+    state.mkdir()
+    (state / failure).touch()
+    run(failure, v, expected=2)
+    assert not (state / 'installed').exists()
 assert all(app['id'] != 'little-snitch' for app in catalog['security']['linux']['apps'])
 print(f'Passed on {sys.platform}; disk mounts and native package managers simulated. Logs: {root}')

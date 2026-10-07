@@ -122,7 +122,8 @@ applications_catalog:
             - /usr/share/typora/Typora
             - "{{ applications_home }}/.local/share/flatpak/app/io.typora.Typora"
             - /var/lib/flatpak/app/io.typora.Typora
-          installer: native
+          installer: native_or_snap
+          snap: typora
           package: typora
           urls:
             deb:

@@ -308,7 +308,17 @@ system-extension approval, and licensing remain manual.
 
 On Linux, Typora uses the official 1.14.9 `.deb` downloads linked by its
 [download page](https://typora.io/) for x86_64 and aarch64. Debian/Ubuntu are
-supported; other distributions fail with an explicit package-format error.
+preferred. On Fedora and other Linux distributions without a configured native
+package, an existing Snap installation is used with `snap install typora` (without
+classic confinement). If Snap is absent, Ansible prints a skip message and continues;
+there is no need to exclude `writing`. Snap is not bootstrapped automatically.
+Snap service and installation errors fail the run instead of being treated as skips.
+The [Snap version's sandbox limitations](https://support.typora.io/Snap/#limitations-for-the-snap-version)
+affect filesystem access and external export/image-upload commands.
+
+For Wayland, Typora documents the optional launch flags
+`--enable-features=UseOzonePlatform --ozone-platform=wayland`. These are not added
+automatically because the playbook does not manage Typora launchers.
 The native package manager installs dependencies. This does not add Typora's
 APT repository or update an existing installation; change the catalog URLs for
 future fresh-install versions. Little Snitch has no Linux catalog entry.

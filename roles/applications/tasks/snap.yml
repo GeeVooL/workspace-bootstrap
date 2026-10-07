@@ -1,0 +1,40 @@
+---
+- name: Discover Snap for the fallback installer
+  ansible.builtin.shell: command -v snap
+  args:
+    executable: /bin/sh
+  environment:
+    PATH: "{{ applications_search_path }}"
+  register: application_snap
+  changed_when: false
+  failed_when: application_snap.rc not in [0, 1, 127]
+  check_mode: false
+
+- name: Explain why the application cannot be installed
+  ansible.builtin.debug:
+    msg: "Skipping {{ application.name }}: no native installer is configured for {{ ansible_facts.os_family }} and Snap is unavailable. Install and configure Snap, then rerun, or install the app manually."
+  when: application_snap.rc != 0
+
+- name: Install through existing Snap
+  when: application_snap.rc == 0
+  block:
+    - name: Check whether the Snap is installed
+      ansible.builtin.command:
+        argv: ["{{ application_snap.stdout }}", list, "{{ application.snap }}"]
+      register: application_snap_package
+      changed_when: false
+      failed_when: application_snap_package.rc not in [0, 1]
+      check_mode: false
+
+    - name: Preview Snap installation
+      ansible.builtin.debug:
+        msg: "Would install {{ application.name }} with snap install {{ application.snap }}."
+      changed_when: true
+      when: ansible_check_mode and application_snap_package.rc != 0
+
+    - name: Install the missing Snap
+      ansible.builtin.command:
+        argv: ["{{ application_snap.stdout }}", install, "{{ application.snap }}"]
+      become: true
+      changed_when: true
+      when: not ansible_check_mode and application_snap_package.rc != 0
