@@ -1,0 +1,6 @@
+---
+macos_homebrew_default: "{{ '/opt/homebrew/bin/brew' if ansible_facts.architecture == 'arm64' else '/usr/local/bin/brew' }}"
+macos_homebrew_executable: "{{ macos_brew_lookup.stdout if macos_brew_lookup.rc == 0 else macos_homebrew_default }}"
+macos_homebrew_formulae: []
+macos_homebrew_casks: []
+homebrew_search_path: "{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin"

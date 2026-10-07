@@ -1,0 +1,127 @@
+---
+- name: Configure homebrew
+  environment:
+    HOMEBREW_NO_AUTO_UPDATE: '1'
+    HOMEBREW_NO_INSTALL_UPGRADE: '1'
+    HOMEBREW_NO_ANALYTICS: '1'
+
+  block:
+    - name: Require macOS and a normal user
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system == 'Darwin'
+          - ansible_facts.architecture in ['arm64', 'x86_64']
+          - ansible_facts.user_uid != 0
+        fail_msg: Run this playbook locally on macOS as your normal account, without sudo.
+
+    - name: Find an existing Homebrew installation
+      ansible.builtin.shell: command -v brew
+      args:
+        executable: /bin/sh
+      environment:
+        PATH: "{{ homebrew_search_path }}:/usr/bin:/bin:/usr/sbin:/sbin"
+      register: macos_brew_lookup
+      changed_when: false
+      failed_when: macos_brew_lookup.rc not in [0, 1]
+      check_mode: false
+
+    - name: Check Homebrew executable
+      ansible.builtin.stat:
+        path: "{{ macos_homebrew_executable }}"
+      register: macos_brew_stat
+
+    - name: Require a usable existing executable or the standard bootstrap path
+      ansible.builtin.assert:
+        that:
+          - macos_homebrew_executable.startswith('/')
+          - not macos_brew_stat.stat.exists or macos_brew_stat.stat.executable
+          - macos_brew_stat.stat.exists or macos_homebrew_executable == macos_homebrew_default
+        fail_msg: An existing custom Homebrew executable must be executable; bootstrap uses the architecture's standard prefix.
+
+    - name: Keep shell configuration on the same Homebrew installation
+      ansible.builtin.set_fact:
+        workstation_homebrew_executable: "{{ macos_homebrew_executable }}"
+
+    - name: Preview Homebrew bootstrap
+      ansible.builtin.debug:
+        msg: Homebrew will be installed using its official noninteractive installer.
+      changed_when: true
+      when:
+        - ansible_check_mode
+        - not macos_brew_stat.stat.exists
+
+    - name: Bootstrap Homebrew
+      when:
+        - not ansible_check_mode
+        - not macos_brew_stat.stat.exists
+      block:
+        - name: Create temporary installer file
+          ansible.builtin.tempfile:
+            state: file
+            suffix: -homebrew-install.sh
+          register: macos_brew_installer
+
+        - name: Download the official Homebrew installer
+          ansible.builtin.get_url:
+            url: https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh
+            dest: "{{ macos_brew_installer.path }}"
+            mode: '0600'
+
+        - name: Run the Homebrew installer as the current user
+          ansible.builtin.command:
+            argv: [/bin/bash, "{{ macos_brew_installer.path }}"]
+            creates: "{{ macos_homebrew_executable }}"
+          environment:
+            NONINTERACTIVE: '1'
+
+      always:
+        - name: Remove temporary installer
+          ansible.builtin.file:
+            path: "{{ macos_brew_installer.path }}"
+            state: absent
+          when: macos_brew_installer.path is defined
+
+    - name: List installed formulae
+      ansible.builtin.command:
+        argv: ["{{ macos_homebrew_executable }}", list, --formula, --full-name]
+      register: macos_installed_formulae
+      changed_when: false
+      check_mode: false
+      when: macos_brew_stat.stat.exists or not ansible_check_mode
+
+    - name: List installed casks
+      ansible.builtin.command:
+        argv: ["{{ macos_homebrew_executable }}", list, --cask, '-1']
+      register: macos_installed_casks
+      changed_when: false
+      check_mode: false
+      when: macos_brew_stat.stat.exists or not ansible_check_mode
+
+    - name: Determine missing packages
+      ansible.builtin.set_fact:
+        macos_missing_formulae: "{{ macos_homebrew_formulae | difference(macos_installed_formulae.stdout_lines | default([])) | sort }}"
+        macos_missing_casks: "{{ macos_homebrew_casks | difference(macos_installed_casks.stdout_lines | default([])) | sort }}"
+
+    - name: Preview missing packages
+      ansible.builtin.debug:
+        msg:
+          formulae: "{{ macos_missing_formulae }}"
+          casks: "{{ macos_missing_casks }}"
+      changed_when: macos_missing_formulae | length > 0 or macos_missing_casks | length > 0
+      when: ansible_check_mode
+
+    - name: Install missing formulae
+      ansible.builtin.command:
+        argv: "{{ [macos_homebrew_executable, 'install', '--formula'] + macos_missing_formulae }}"
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - macos_missing_formulae | length > 0
+
+    - name: Install optional casks
+      ansible.builtin.command:
+        argv: "{{ [macos_homebrew_executable, 'install', '--cask'] + macos_missing_casks }}"
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - macos_missing_casks | length > 0

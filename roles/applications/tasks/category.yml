@@ -1,0 +1,12 @@
+---
+- name: Install macOS applications
+  ansible.builtin.include_tasks: macos.yml
+  vars:
+    category_apps: "{{ applications_catalog[application_category].macos | default({}) }}"
+  when: ansible_facts.system == 'Darwin'
+
+- name: Install Linux applications
+  ansible.builtin.include_tasks: linux.yml
+  vars:
+    category_apps: "{{ applications_catalog[application_category].linux | default({}) }}"
+  when: ansible_facts.system == 'Linux'

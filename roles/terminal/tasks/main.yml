@@ -1,0 +1,177 @@
+---
+- name: Configure terminal
+  environment:
+    PATH: "{{ terminal_search_path }}"
+
+  block:
+    - name: Require macOS or Linux and a normal user
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system in ['Darwin', 'Linux']
+          - ansible_facts.user_uid != 0
+        fail_msg: Run this locally as your normal account on macOS or Linux, without sudo.
+
+    - name: Locate required tools
+      ansible.builtin.shell: "command -v {{ item | quote }}"
+      args:
+        executable: /bin/sh
+      loop:
+        - fish
+        - git
+        - starship
+        - fzf
+        - zoxide
+        - fd
+        - bat
+        - curl
+        - tar
+      register: terminal_tools
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Require installed tools before modifying configuration
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout.startswith('/')
+        fail_msg: "Install {{ item.item }} and make it available on PATH, then rerun. See README.md."
+      loop: "{{ terminal_tools.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Remember tool paths
+      ansible.builtin.set_fact:
+        fish_executable: "{{ terminal_tools.results[0].stdout }}"
+        fzf_executable: "{{ terminal_tools.results[3].stdout }}"
+
+    - name: Read tool versions
+      ansible.builtin.command:
+        argv: ["{{ item.path }}", --version]
+      loop:
+        - { name: fish, path: "{{ fish_executable }}", minimum: '4.0.0' }
+        - { name: fzf, path: "{{ fzf_executable }}", minimum: '0.33.0' }
+        - { name: fd, path: "{{ terminal_tools.results[5].stdout }}", minimum: '8.5.0' }
+        - { name: bat, path: "{{ terminal_tools.results[6].stdout }}", minimum: '0.16.0' }
+      register: terminal_versions
+      changed_when: false
+      check_mode: false
+
+    - name: Require versions supported by fzf.fish
+      ansible.builtin.assert:
+        that: (item.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) is version(item.item.minimum, '>=')
+        fail_msg: "Upgrade {{ item.item.name }} to {{ item.item.minimum }} or later."
+      loop: "{{ terminal_versions.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Create Fish configuration directory
+      ansible.builtin.file:
+        path: "{{ terminal_config_root }}/fish/conf.d"
+        state: directory
+        mode: '0700'
+
+    - name: Install the Fish configuration snippets
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/fish/{{ item }}"
+        dest: "{{ terminal_config_root }}/fish/conf.d/{{ item }}"
+        mode: '0644'
+        backup: true
+        validate: "{{ fish_executable }} --no-execute %s"
+      loop:
+        - git-abbreviations.fish
+        - mise.fish
+        - starship.fish
+        - fzf-options.fish
+        - zoxide.fish
+
+    - name: Inspect the previous fzf snippet
+      ansible.builtin.stat:
+        path: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
+        checksum_algorithm: sha256
+      register: previous_fzf
+
+    - name: Back up the previous managed fzf integration
+      ansible.builtin.copy:
+        src: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
+        dest: "{{ terminal_config_root }}/fish/conf.d/fzf.fish.{{ ansible_facts.date_time.iso8601_basic_short }}.bak"
+        remote_src: true
+        mode: '0600'
+      when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
+
+    - name: Remove the previous managed fzf integration
+      ansible.builtin.file:
+        path: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
+        state: absent
+      when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
+
+    - name: Inspect the installed Fisher manifest
+      ansible.builtin.stat:
+        path: "{{ terminal_config_root }}/fish/fish_plugins"
+      register: fisher_manifest
+
+    - name: Read the installed Fisher manifest
+      ansible.builtin.slurp:
+        src: "{{ terminal_config_root }}/fish/fish_plugins"
+      register: fisher_manifest_content
+      when: fisher_manifest.stat.exists
+
+    - name: Identify missing Fisher plugins
+      ansible.builtin.set_fact:
+        missing_plugins: "{{ lookup('file', role_path ~ '/files/fisher/fish_plugins').splitlines() | difference((fisher_manifest_content.content | default('') | b64decode).splitlines()) }}"
+
+    - name: Install missing Fisher plugins
+      when: missing_plugins | length > 0
+      block:
+        - name: Create Fisher bootstrap directory
+          ansible.builtin.file:
+            path: "{{ terminal_config_root }}/fish/.bootstrap"
+            state: directory
+            mode: '0700'
+
+        - name: Download the versioned Fisher bootstrap function
+          ansible.builtin.get_url:
+            url: "{{ fisher_bootstrap_url }}"
+            dest: "{{ terminal_config_root }}/fish/.bootstrap/fisher.fish"
+            mode: '0600'
+          when: not ansible_check_mode
+
+        - name: Install required plugins while preserving additional plugins
+          ansible.builtin.command:
+            argv:
+              - "{{ fish_executable }}"
+              - "{{ role_path }}/files/fisher/install.fish"
+              - apply
+              - "{{ terminal_config_root }}/fish/.bootstrap/fisher.fish"
+              - "{{ role_path }}/files/fisher/fish_plugins"
+          environment:
+            XDG_CONFIG_HOME: "{{ terminal_config_root }}"
+          changed_when: true
+          when: not ansible_check_mode
+
+        - name: Report pending plugin installation in check mode
+          ansible.builtin.debug:
+            msg: "Would install: {{ missing_plugins | join(', ') }}"
+          changed_when: true
+          when: ansible_check_mode
+
+    - name: Create Ghostty configuration directory
+      ansible.builtin.file:
+        path: "{{ ghostty_config_path | dirname }}"
+        state: directory
+        mode: '0700'
+      when: configure_ghostty | bool
+
+    - name: Launch Fish in Ghostty
+      ansible.builtin.lineinfile:
+        path: "{{ ghostty_config_path }}"
+        regexp: '^\s*command\s*='
+        line: "command = {{ fish_executable }}"
+        create: true
+        mode: '0644'
+        backup: true
+      when: configure_ghostty | bool
+
+    - name: Explain activation
+      ansible.builtin.debug:
+        msg: Reload Ghostty configuration and open a new tab. The account login shell is unchanged.

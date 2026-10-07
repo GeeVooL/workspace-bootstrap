@@ -1,0 +1,5 @@
+---
+applications_catalog: {}
+applications_enabled_categories: "{{ applications_catalog.keys() | list }}"
+applications_excluded_categories: []
+homebrew_search_path: "{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin"

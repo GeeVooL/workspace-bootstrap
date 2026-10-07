@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
 
     def deploy(*flags):
         result = subprocess.run(
-            [ANSIBLE, '-i', 'localhost,', 'shell-paths.yml', '-e', json.dumps(variables), *flags],
+            [ANSIBLE, 'shell-paths.yml', '-e', json.dumps(variables), *flags],
             cwd=REPO, env=env, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout

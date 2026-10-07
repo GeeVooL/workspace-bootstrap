@@ -1,0 +1,17 @@
+---
+# Machine-profile policy; reusable roles keep their defaults in roles/*/defaults.
+applications_catalog:
+  utilities:
+    macos:
+      formulae: [mise, fish, git, starship, fzf, zoxide, bat, fd, ripgrep, tree, jq]
+      casks: []
+    linux:
+      packages: []
+  development:
+    macos:
+      casks: [fork]
+      formulae: []
+    linux:
+      packages: []
+
+applications_excluded_categories: []

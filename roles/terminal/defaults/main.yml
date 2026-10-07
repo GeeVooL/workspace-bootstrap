@@ -1,0 +1,6 @@
+---
+terminal_config_root: "{{ ansible_facts.env.XDG_CONFIG_HOME | default(ansible_facts.user_dir ~ '/.config', true) }}"
+configure_ghostty: true
+fisher_bootstrap_url: https://raw.githubusercontent.com/jorgebucaran/fisher/4.4.8/functions/fisher.fish
+ghostty_config_path: "{{ (ansible_facts.user_dir ~ '/Library/Application Support/com.mitchellh.ghostty/config.ghostty') if ansible_facts.system == 'Darwin' else (terminal_config_root ~ '/ghostty/config.ghostty') }}"
+terminal_search_path: "{{ (workstation_bin_paths + [ansible_facts.env.PATH]) | join(':') }}"

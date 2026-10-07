@@ -1,0 +1,7 @@
+---
+- name: Install native Linux packages
+  ansible.builtin.package:
+    name: "{{ category_apps.packages | default([]) }}"
+    state: present
+  become: true
+  when: category_apps.packages | default([]) | length > 0

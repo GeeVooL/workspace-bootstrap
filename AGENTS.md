@@ -3,13 +3,18 @@
 ## Purpose and structure
 
 Workstation Bootstrap provides Ansible configuration for development machines on
-macOS and Linux. The current scope is the terminal and shell, plus macOS package
-installation; editors and development toolchains are planned. Read README.md for
-current behavior.
+macOS and Linux. The current scope is the terminal and shell, plus macOS utilities and Fork installation,
+Homebrew bootstrapping, Fisher plugins, and shared shell paths. Editors and further
+development toolchains are planned. Read README.md for current behavior.
 
-- Keep playbooks focused on orchestration. Store static configuration in `files/`
-  and use separate templates when values need substitution.
-- Fish snippets live in `files/fish/` and are deployed by `terminal.yml`.
+- Keep playbooks focused on orchestration. Store static configuration in role-local
+  `files/` directories and use `templates/` when values need substitution.
+- Fish snippets live in `roles/terminal/files/fish/` and are deployed by the
+  terminal role through `terminal.yml`.
+- Follow the documented Ansible layout: top-level orchestration playbooks,
+  reusable `roles/`, and inventories with `group_vars/` and `host_vars/`.
+  Put platform-specific tasks inside roles. Keep application catalogs and
+  category selections in inventory variables; reusable defaults belong in roles.
 - Use Fish abbreviations for Git shortcuts. Preserve Oh My Zsh meanings where
   supported, especially `gd` for unstaged diffs and `gds` for staged diffs.
 - Keep documentation factual and repository-focused. Update it when managed files,
@@ -30,10 +35,9 @@ current behavior.
 
 ## Validation
 
-- Run `ansible-playbook -i localhost, terminal.yml --syntax-check` after playbook edits.
-- Run `ansible-playbook -i localhost, macos.yml --syntax-check` after macOS playbook edits.
-- Validate package installation with a temporary Homebrew stand-in; do not install
-  or upgrade live packages unless deployment was requested.
+- Run `ansible-playbook terminal.yml --syntax-check` after playbook edits.
+- Also syntax-check `site.yml`, `applications.yml`, `macos.yml`, and `shell-paths.yml`. Validate package
+  installation with temporary fixtures; do not install apps on the host unless requested.
 - Run `fish --no-execute` on each changed Fish snippet.
 - For changes to deployment behavior, test against temporary paths using
   `terminal_config_root`, `ghostty_config_path`, `shell_home`, and `shell_zdotdir`

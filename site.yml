@@ -1,0 +1,6 @@
+---
+- name: Install workstation applications
+  ansible.builtin.import_playbook: applications.yml
+
+- name: Configure workstation terminal
+  ansible.builtin.import_playbook: terminal.yml

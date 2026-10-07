@@ -1,0 +1,24 @@
+---
+- name: Require a supported workstation and a normal account
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system in ['Darwin', 'Linux']
+      - ansible_facts.user_uid != 0
+    fail_msg: Run as your normal account on macOS or Linux, without sudo.
+
+- name: Validate application category selection
+  ansible.builtin.assert:
+    that:
+      - applications_catalog is mapping
+      - applications_enabled_categories is sequence and applications_enabled_categories is not string
+      - applications_excluded_categories is sequence and applications_excluded_categories is not string
+      - applications_enabled_categories | difference(applications_catalog.keys() | list) | length == 0
+      - applications_excluded_categories | difference(applications_catalog.keys() | list) | length == 0
+    fail_msg: Enabled and excluded categories must be lists of names from applications_catalog.
+
+- name: Install selected application categories
+  ansible.builtin.include_tasks: category.yml
+  loop: "{{ applications_enabled_categories | unique | difference(applications_excluded_categories) }}"
+  loop_control:
+    loop_var: application_category
+    label: "{{ application_category }}"

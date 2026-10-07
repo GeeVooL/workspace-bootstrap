@@ -1,0 +1,8 @@
+---
+- name: Install selected Homebrew applications
+  ansible.builtin.include_role:
+    name: homebrew
+  vars:
+    macos_homebrew_formulae: "{{ category_apps.formulae | default([]) }}"
+    macos_homebrew_casks: "{{ category_apps.casks | default([]) }}"
+  when: (category_apps.casks | default([]) | length > 0) or (category_apps.formulae | default([]) | length > 0)
