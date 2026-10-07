@@ -1,0 +1,52 @@
+---
+- name: Preview official macOS installation
+  ansible.builtin.debug:
+    msg: "{{ application.name }} will be installed from its official DMG into {{ applications_macos_install_dir }}."
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Install official macOS disk image
+  when: not ansible_check_mode
+  block:
+    - name: Create temporary disk image directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: -editor-dmg
+      register: application_dmg
+
+    - name: Download official disk image
+      ansible.builtin.get_url:
+        url: "{{ application.url }}"
+        dest: "{{ application_dmg.path }}/editor.dmg"
+        mode: '0600'
+
+    - name: Mount disk image read-only
+      ansible.builtin.command:
+        argv: [hdiutil, attach, -readonly, -nobrowse, -mountpoint, "{{ application_dmg.path }}/mount", "{{ application_dmg.path }}/editor.dmg"]
+      register: application_mount
+      changed_when: true
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ applications_macos_install_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy application bundle from official disk image
+      ansible.builtin.command:
+        argv: [ditto, "{{ application_dmg.path }}/mount/{{ application.bundle }}", "{{ applications_macos_install_dir }}/{{ application.bundle }}"]
+        creates: "{{ applications_macos_install_dir }}/{{ application.bundle }}"
+      changed_when: true
+
+  always:
+    - name: Unmount disk image
+      ansible.builtin.command:
+        argv: [hdiutil, detach, "{{ application_dmg.path }}/mount"]
+      changed_when: true
+      when: application_mount is defined and application_mount is succeeded and application_mount is not skipped
+
+    - name: Remove temporary disk image
+      ansible.builtin.file:
+        path: "{{ application_dmg.path }}"
+        state: absent
+      when: application_dmg.path is defined

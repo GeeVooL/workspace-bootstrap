@@ -1,7 +1,8 @@
 # Workstation Bootstrap
 
 Ansible configuration for development workstations on macOS and Linux. The current
-setup installs Fork on macOS and configures Fish, Starship, fzf, zoxide, and optional
+setup installs VS Code and Zed on macOS and Linux, Fork on macOS,
+and configures Fish, Starship, fzf, zoxide, and optional
 Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS.
 Linux prerequisites are still installed separately.
 
@@ -60,8 +61,8 @@ brew install --cask ghostty
 ```
 
 On Linux, use the distribution's package manager or the tools' official installers.
-The Linux application catalog is currently empty. Native package installation is
-implemented, but package names must be supplied for the target distribution.
+Linux editors use official installers and native packages as described below. Native package
+installation is also implemented, but package names must be supplied for the target distribution.
 Linux package tasks use privilege escalation; pass `--ask-become-pass` if needed.
 The Homebrew role preserves main’s noninteractive bootstrap behavior. Linux
 repositories, Flatpak, and Snap are not managed yet.
@@ -122,7 +123,8 @@ it does not install applications. Homebrew tasks install only missing packages, 
 
 The local inventory's `group_vars/workstations.yml` defines the application catalog.
 All catalog categories are enabled by default. Currently `utilities` contains mise, fish, git, starship, fzf, zoxide, bat, fd,
-ripgrep, tree, and jq on macOS; `development` contains Fork. Linux lists are empty. Excluding a category skips installation;
+ripgrep, tree, and jq on macOS; `development` contains Fork, and `editors` contains VS Code and Zed on both platforms.
+Linux utilities remain unmanaged. Excluding a category skips installation;
 it does not uninstall existing applications.
 
 Exclude a category for one run, or select an explicit subset:
@@ -138,7 +140,7 @@ Category selection uses variables; the runnable tags are `applications` and
 `terminal`, and `shell_paths`. `--tags development` is not a category selector. Unknown category
 names fail validation rather than silently skipping work.
 
-Add categories such as `editors`, `browsers`, or `media` as catalog entries:
+Add categories such as `browsers` or `media` as catalog entries:
 
 ```yaml
 applications_catalog:
@@ -148,7 +150,7 @@ applications_catalog:
       formulae: []
     linux:
       packages: []
-  editors:
+  browsers:
     macos:
       casks: []
       formulae: []
@@ -159,6 +161,52 @@ applications_catalog:
 Fill the lists with the packages you want; empty or omitted platform entries do
 nothing and require no package manager. Fork has no official Linux release.
 Catalog overrides replace the dictionary, so supply the complete desired catalog.
+
+### Editors
+
+The `editors` category is enabled by default. Install only editors with:
+
+```sh
+ansible-playbook applications.yml -e '{"applications_enabled_categories": ["editors"]}'
+```
+
+On macOS, Zed uses the `zed` Homebrew cask. VS Code uses Microsoft's official
+Universal `.dmg`: the role mounts it read-only, copies `Visual Studio Code.app`
+into `/Applications`, then unmounts and removes the download. The destination can
+be overridden with `applications_macos_install_dir`; the account must have write
+access there. VS Code's command palette can install the `code` command in PATH.
+See [Microsoft's macOS instructions](https://code.visualstudio.com/docs/setup/mac).
+
+On Linux, Zed is installed by downloading and running the
+[official install script](https://zed.dev/docs/linux) as the current user, with the
+stable channel selected. The script installs into `~/.local/zed.app` and creates
+the command and desktop launcher. Run `shell-paths.yml` if `~/.local/bin` is not
+on PATH. Zed requires curl or wget, tar, and compatible runtime libraries and
+Vulkan graphics; these prerequisites are not installed by this role.
+
+Linux VS Code uses Microsoft's official architecture-specific `.deb` on
+Debian/Ubuntu, or `.rpm` on Fedora/RHEL and openSUSE/SLE. Ansible installs the local
+`.deb` with apt; RPM packages use the detected dnf, dnf5, yum, or zypper command
+after importing Microsoft's signing key. Package installation uses privilege
+escalation; pass `--ask-become-pass` if needed. Unsupported distribution families
+fail clearly rather than falling back to a tarball. Both Linux installers support
+x86_64 and aarch64. See [Microsoft's Linux instructions](https://code.visualstudio.com/docs/setup/linux).
+
+Before installing, the role checks CLI commands and known installation locations,
+including `/Applications`, `~/Applications`, the official Zed Linux install path,
+and standard user/system Flatpak locations. VS Code also checks the Linux native
+package database. Homebrew's inventory prevents reinstalling an existing Zed cask.
+Detected editors are left untouched: no reinstall, upgrade, or settings changes.
+For custom locations, extend `applications_search_path`, `applications_macos_dirs`,
+or the catalog application's `paths` list. Check mode reports missing editors
+without downloading or running installers. Temporary downloads are removed afterward.
+
+The catalog's platform `apps` entries select `homebrew`, `dmg`, `script`, or
+`native` installation. Existing `casks`, `formulae`, and Linux `packages` lists
+continue to work unchanged. `applications_home`, `applications_bin_dir`,
+`applications_search_path`, `applications_macos_dirs`, and
+`applications_macos_install_dir` can be overridden for custom locations or fixtures.
+Subsequent updates are left to the user, editor, or native package manager.
 
 For another machine profile, copy `inventories/local/` to a named inventory and
 adjust its group/host variables, then run `ansible-playbook -i inventories/PROFILE/hosts.yml site.yml`.
@@ -199,7 +247,7 @@ system-wide profiles or force initialization for every script.
 
 This makes executables such as `git`, `fzf`, `zoxide`, `bat`, `fd`, `rg`, `tree`,
 and `jq` available across shells. Fish retains the existing prompt and navigation
-integrations; Bash and Zsh receive PATH setup only. On Linux, package installation
+integrations; Bash and Zsh receive PATH setup only. On Linux, terminal dependency installation
 is still external to these playbooks, and distribution-specific names such as
 `batcat` or `fdfind` are not renamed.
 
@@ -392,3 +440,11 @@ report missing terminal tools that the preceding application play would install.
 Run `python3 tests/check-fisher-repair.py` for offline repair regression checks.
 These use a local bootstrap fixture to verify manifest-only recovery, missing-file
 repair, failure detection, preservation of extra plugins, check mode, and idempotence.
+
+Run `python3 tests/check-editors.py` in the Ansible Python environment for offline
+editor checks. It validates official installer routing, both Linux architecture
+selections, existing commands and bundles, package database detection, category
+exclusion, check mode, and zero changes on repeat. The suite runs copied roles
+with local download fixtures, simulated disk mounts and package managers, and
+substitutes privileged apt/key modules in that copy. Actual Linux package
+installation, GUI launches, and upstream downloads are not tested by this suite.

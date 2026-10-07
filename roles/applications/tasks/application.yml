@@ -1,0 +1,43 @@
+---
+- name: Look for existing application commands
+  ansible.builtin.shell: "command -v {{ item | quote }}"
+  args:
+    executable: /bin/sh
+  environment:
+    PATH: "{{ applications_search_path }}"
+  loop: "{{ application.commands }}"
+  register: application_commands
+  changed_when: false
+  failed_when: application_commands.rc not in [0, 1]
+  check_mode: false
+
+- name: Check known installation locations
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: >-
+    {{ ((applications_macos_dirs + [applications_macos_install_dir]) | unique | map('regex_replace', '$', '/' + application.bundle) | list)
+       if ansible_facts.system == 'Darwin' else
+       (application.paths | default([])) }}
+  register: application_locations
+
+- name: Determine whether application is already installed
+  ansible.builtin.set_fact:
+    application_present: >-
+      {{ (application_commands.results | selectattr('rc', 'equalto', 0) | list | length > 0)
+         or (application_locations.results | selectattr('stat.exists') | list | length > 0) }}
+
+- name: Install missing Homebrew application
+  ansible.builtin.include_role:
+    name: homebrew
+  vars:
+    macos_homebrew_formulae: []
+    macos_homebrew_casks: "{{ [application.cask] }}"
+  when:
+    - not application_present
+    - application.installer == 'homebrew'
+
+- name: Install missing application from its official distribution
+  ansible.builtin.include_tasks: "{{ application.installer }}.yml"
+  when:
+    - not application_present
+    - application.installer in ['dmg', 'native', 'script']

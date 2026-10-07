@@ -1,0 +1,43 @@
+---
+- name: Require supported Linux architecture for the official script
+  ansible.builtin.assert:
+    that: ansible_facts.architecture in ['x86_64', 'aarch64']
+    fail_msg: The official Zed Linux installer requires x86_64 or aarch64.
+
+- name: Preview official script installation
+  ansible.builtin.debug:
+    msg: "{{ application.name }} will be installed using {{ application.url }} as the current user."
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Run official installer only for a missing application
+  when: not ansible_check_mode
+  block:
+    - name: Create temporary script directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: -editor-script
+      register: application_script
+
+    - name: Download official installer script
+      ansible.builtin.get_url:
+        url: "{{ application.url }}"
+        dest: "{{ application_script.path }}/install.sh"
+        mode: '0600'
+
+    - name: Run official stable installer as the current user
+      ansible.builtin.command:
+        argv: [/bin/sh, "{{ application_script.path }}/install.sh"]
+      environment:
+        HOME: "{{ applications_home }}"
+        ZED_CHANNEL: stable
+        ZED_VERSION: latest
+        TMPDIR: "{{ application_script.path }}"
+      changed_when: true
+
+  always:
+    - name: Remove temporary installer script and downloads
+      ansible.builtin.file:
+        path: "{{ application_script.path }}"
+        state: absent
+      when: application_script.path is defined

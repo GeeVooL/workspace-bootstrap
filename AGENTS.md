@@ -4,8 +4,8 @@
 
 Workstation Bootstrap provides Ansible configuration for development machines on
 macOS and Linux. The current scope is the terminal and shell, plus macOS utilities and Fork installation,
-Homebrew bootstrapping, Fisher plugins, and shared shell paths. Editors and further
-development toolchains are planned. Read README.md for current behavior.
+VS Code and Zed installation on macOS and Linux, Homebrew bootstrapping, Fisher
+plugins, and shared shell paths. Further development toolchains are planned. Read README.md for current behavior.
 
 - Keep playbooks focused on orchestration. Store static configuration in role-local
   `files/` directories and use `templates/` when values need substitution.

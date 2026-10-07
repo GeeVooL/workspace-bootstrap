@@ -6,3 +6,10 @@
     macos_homebrew_formulae: "{{ category_apps.formulae | default([]) }}"
     macos_homebrew_casks: "{{ category_apps.casks | default([]) }}"
   when: (category_apps.casks | default([]) | length > 0) or (category_apps.formulae | default([]) | length > 0)
+
+- name: Install applications after checking for existing installations
+  ansible.builtin.include_tasks: application.yml
+  loop: "{{ category_apps.apps | default([]) }}"
+  loop_control:
+    loop_var: application
+    label: "{{ application.name }}"

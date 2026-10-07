@@ -1,0 +1,82 @@
+---
+- name: Require a supported Linux distribution
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family in ['Debian', 'RedHat', 'Suse']
+      - ansible_facts.os_family == 'Debian' or ansible_facts.pkg_mgr in ['dnf', 'dnf5', 'yum', 'zypper']
+    fail_msg: Official VS Code packages require Debian/Ubuntu (deb), Fedora/RHEL (rpm), or openSUSE/SLE (rpm).
+
+- name: Select native package format
+  ansible.builtin.set_fact:
+    application_package_format: "{{ 'deb' if ansible_facts.os_family == 'Debian' else 'rpm' }}"
+
+- name: Check native package database
+  ansible.builtin.command:
+    argv: "{{ ['dpkg-query', '-W', '-f=${Status}', application.package] if application_package_format == 'deb' else ['rpm', '-q', application.package] }}"
+  register: application_package_query
+  changed_when: false
+  failed_when: application_package_query.rc not in [0, 1]
+  check_mode: false
+
+- name: Determine whether native package is installed
+  ansible.builtin.set_fact:
+    application_package_present: "{{ application_package_query.rc == 0 and (application_package_format == 'rpm' or application_package_query.stdout == 'install ok installed') }}"
+
+- name: Install missing official native package
+  when: not application_package_present
+  block:
+    - name: Require a supported package architecture
+      ansible.builtin.assert:
+        that: ansible_facts.architecture in application.urls[application_package_format]
+        fail_msg: Official VS Code package installation supports x86_64 and aarch64.
+
+    - name: Preview native package installation
+      ansible.builtin.debug:
+        msg: "{{ application.name }} will be installed from {{ application.urls[application_package_format][ansible_facts.architecture] }}."
+      changed_when: true
+      when: ansible_check_mode
+
+    - name: Download and install native package
+      when: not ansible_check_mode
+      block:
+        - name: Create temporary package directory
+          ansible.builtin.tempfile:
+            state: directory
+            suffix: -editor-package
+          register: application_package_download
+
+        - name: Download official native package
+          ansible.builtin.get_url:
+            url: "{{ application.urls[application_package_format][ansible_facts.architecture] }}"
+            dest: "{{ application_package_download.path }}/editor.{{ application_package_format }}"
+            mode: '0644'
+
+        - name: Install official Debian package
+          ansible.builtin.apt:
+            deb: "{{ application_package_download.path }}/editor.deb"
+            state: present
+          become: true
+          when: application_package_format == 'deb'
+
+        - name: Trust official Microsoft RPM signing key
+          ansible.builtin.rpm_key:
+            key: "{{ application.signing_key }}"
+            state: present
+          become: true
+          when: application_package_format == 'rpm'
+
+        # Use the native CLI for RPM files, including dnf5 and zypper, without
+        # requiring external Ansible collections or package-manager Python bindings.
+        - name: Install official RPM package with the native package manager
+          ansible.builtin.command:
+            argv: "{{ (['zypper', '--non-interactive', 'install'] if ansible_facts.pkg_mgr == 'zypper' else [ansible_facts.pkg_mgr, 'install', '-y']) + [application_package_download.path + '/editor.rpm'] }}"
+          become: true
+          changed_when: true
+          when: application_package_format == 'rpm'
+
+      always:
+        - name: Remove temporary native package
+          ansible.builtin.file:
+            path: "{{ application_package_download.path }}"
+            state: absent
+          when: application_package_download.path is defined

@@ -13,5 +13,50 @@ applications_catalog:
       formulae: []
     linux:
       packages: []
+  editors:
+    macos:
+      apps:
+        - name: Visual Studio Code
+          id: vscode
+          commands: [code]
+          bundle: Visual Studio Code.app
+          installer: dmg
+          url: https://update.code.visualstudio.com/latest/darwin-universal-dmg/stable
+        - name: Zed
+          id: zed
+          commands: [zed]
+          bundle: Zed.app
+          installer: homebrew
+          cask: zed
+    linux:
+      apps:
+        - name: Visual Studio Code
+          id: vscode
+          commands: [code]
+          paths:
+            - /usr/share/code/bin/code
+            - /opt/visual-studio-code/bin/code
+            - "{{ applications_home }}/.local/share/flatpak/app/com.visualstudio.code"
+            - /var/lib/flatpak/app/com.visualstudio.code
+          installer: native
+          package: code
+          urls:
+            deb:
+              x86_64: https://update.code.visualstudio.com/latest/linux-deb-x64/stable
+              aarch64: https://update.code.visualstudio.com/latest/linux-deb-arm64/stable
+            rpm:
+              x86_64: https://update.code.visualstudio.com/latest/linux-rpm-x64/stable
+              aarch64: https://update.code.visualstudio.com/latest/linux-rpm-arm64/stable
+          signing_key: https://packages.microsoft.com/keys/microsoft.asc
+        - name: Zed
+          id: zed
+          commands: [zed, zeditor, zedit]
+          paths:
+            - "{{ applications_home }}/.local/zed.app/bin/zed"
+            - /opt/zed.app/bin/zed
+            - "{{ applications_home }}/.local/share/flatpak/app/dev.zed.Zed"
+            - /var/lib/flatpak/app/dev.zed.Zed
+          installer: script
+          url: https://zed.dev/install.sh
 
 applications_excluded_categories: []
