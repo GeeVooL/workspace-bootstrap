@@ -52,7 +52,7 @@ custom module scaffolding are required.
 - Ansible Core (validated with 2.15.13); no external collections are required
 - A normal user account on macOS or Linux
 - macOS Homebrew prerequisites (including Command Line Tools); Homebrew is bootstrapped when absent
-- Fish 4+, Git, Starship, fzf 0.33+, zoxide, fd 8.5+, bat 0.16+, curl, and tar for terminal configuration
+- Fish 4+, Git, Starship, fzf 0.33+, zoxide, fd/fdfind 8.5+, bat/batcat 0.16+, curl, and tar for terminal configuration
 - Ghostty if configuring its Fish launch command
 
 On macOS, install terminal prerequisites with:
@@ -507,7 +507,9 @@ This makes executables such as `git`, `fzf`, `zoxide`, `bat`, `fd`, `rg`, `tree`
 and `jq` available across shells. Fish retains the existing prompt and navigation
 integrations; Bash and Zsh receive PATH setup only. On Linux, terminal dependency installation
 is still external to these playbooks, and distribution-specific names such as
-`batcat` or `fdfind` are not renamed.
+`batcat` and `fdfind` are accepted by prerequisite checks. Fish supplies `bat`
+and `fd` aliases when the standard names are absent, preserving existing commands,
+aliases, and functions. No executable symlinks are created.
 
 ## Managed files
 
@@ -515,6 +517,7 @@ The playbook manages these files under `$XDG_CONFIG_HOME/fish/conf.d`, falling b
 to `~/.config/fish/conf.d`:
 
 - `00-workstation-path.fish` (generated PATH setup)
+- `tool-aliases.fish` (Fish aliases for Debian/Ubuntu executable names)
 - `git-abbreviations.fish`
 - `mise.fish`
 - `starship.fish`
@@ -752,6 +755,10 @@ Run `python3 tests/check-snap-setup.py` for offline Snap setup tests covering
 category ordering, workplace filtering, check mode, existing-service preservation, mount-path
 preservation, failures, and repeat-run idempotence. Package managers, Snap, and
 systemd are simulated; these checks do not validate real daemon startup or snap mounts.
+
+Run `python3 tests/check-tool-names.py` for alternate executable detection,
+version checks, alias argument forwarding, and preservation of existing commands
+and Fish functions. These checks use isolated executable fixtures.
 
 Run `python3 tests/check-config-preservation.py` to verify managed-file adoption,
 backed-up updates, unmarked files and symlinks, directory/file permissions, Ghostty

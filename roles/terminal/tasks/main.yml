@@ -12,7 +12,10 @@
         fail_msg: Run this locally as your normal account on macOS or Linux, without sudo.
 
     - name: Locate required tools
-      ansible.builtin.shell: "command -v {{ item | quote }}"
+      ansible.builtin.shell: >-
+        {% if item == 'fd' %}command -v fdfind || command -v fd
+        {% elif item == 'bat' %}command -v bat || command -v batcat
+        {% else %}command -v {{ item | quote }}{% endif %}
       args:
         executable: /bin/sh
       loop:
@@ -79,6 +82,7 @@
         managed_config_legacy_contents: ["{{ managed_config_content.split('\n', 1)[1] }}"]
         managed_config_validate: "{{ fish_executable }} --no-execute %s"
       loop:
+        - tool-aliases.fish
         - git-abbreviations.fish
         - mise.fish
         - starship.fish
