@@ -11,6 +11,7 @@ applications_catalog:
     macos:
       casks: [fork]
       formulae: []
+      apple_container: true
     linux:
       packages: []
   editors:

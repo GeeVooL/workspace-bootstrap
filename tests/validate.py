@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import shutil
 import sys
+import yaml
 from fisher_fixture import seed_plugins
 
 assert sys.platform == 'darwin', 'This fixture suite currently requires macOS.'
@@ -37,6 +38,9 @@ else:
 ''')
 brew.chmod(0o755)
 env = dict(os.environ, ANSIBLE_REMOTE_TEMP=str(root / 'remote'))
+catalog = yaml.safe_load(Path('inventories/local/group_vars/workstations.yml').read_text())['applications_catalog']
+# The signed package installer has its own offline fixture suite.
+catalog['development']['macos']['apple_container'] = False
 
 def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
     variables = dict(variables or {}, ansible_python_interpreter=python)
@@ -45,6 +49,7 @@ def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
     variables.setdefault('shell_extra_bin_paths', [str(root)])
     if inventory is None:
         variables.setdefault('applications_enabled_categories', ['development'])
+        variables.setdefault('applications_catalog', catalog)
     inventory_args = ['-i', str(inventory)] if inventory else []
     result = subprocess.run([ansible, *inventory_args, playbook,
                              '-e', json.dumps(variables), *flags],

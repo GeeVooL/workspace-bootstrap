@@ -1,8 +1,8 @@
 # Workstation Bootstrap
 
 Ansible configuration for development workstations on macOS and Linux. The current
-setup installs VS Code and Zed on macOS and Linux, Fork on macOS,
-and configures Fish, Starship, fzf, zoxide, and optional
+setup installs VS Code and Zed on macOS and Linux, Fork and Apple container on
+supported Macs, and configures Fish, Starship, fzf, zoxide, and optional
 Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS.
 Linux prerequisites are still installed separately.
 
@@ -24,6 +24,7 @@ inventories/local/
   group_vars/workstations.yml    # application catalog and profile settings
   host_vars/                     # optional per-machine overrides
 roles/
+  apple_container/               # latest signed upstream macOS installer
   applications/
     defaults/main.yml
     tasks/
@@ -75,7 +76,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install ansible-core
 source .venv/bin/activate
 ansible-playbook macos.yml --check --diff
-ansible-playbook macos.yml
+ansible-playbook macos.yml --ask-become-pass
 ```
 
 Run from a native terminal on Apple Silicon. Homebrew bootstraps into the standard
@@ -97,14 +98,14 @@ inventory and roles directory. Preview, then apply:
 
 ```sh
 ansible-playbook site.yml --check --diff
-ansible-playbook site.yml
+ansible-playbook site.yml --ask-become-pass
 ```
 
 Run a component or exclude it:
 
 ```sh
 ansible-playbook terminal.yml
-ansible-playbook applications.yml
+ansible-playbook applications.yml --ask-become-pass
 ansible-playbook site.yml --tags terminal
 ansible-playbook site.yml --skip-tags applications
 ansible-playbook site.yml -e configure_ghostty=false
@@ -123,8 +124,10 @@ it does not install applications. Homebrew tasks install only missing packages, 
 
 The local inventory's `group_vars/workstations.yml` defines the application catalog.
 All catalog categories are enabled by default. Currently `utilities` contains mise, fish, git, starship, fzf, zoxide, bat, fd,
-ripgrep, tree, and jq on macOS; `development` contains Fork, and `editors` contains VS Code and Zed on both platforms.
-Linux utilities remain unmanaged. Excluding a category skips installation;
+ripgrep, tree, and jq on macOS; `development` contains Fork and Apple container,
+and `editors` contains VS Code and Zed on both platforms. Apple container is skipped
+on Intel Macs and macOS versions below 26. Linux utilities remain unmanaged.
+Excluding a category skips installation;
 it does not uninstall existing applications.
 
 Exclude a category for one run, or select an explicit subset:
@@ -148,6 +151,7 @@ applications_catalog:
     macos:
       casks: [fork]
       formulae: []
+      apple_container: true
     linux:
       packages: []
   browsers:
@@ -218,6 +222,40 @@ Use `host_vars/HOSTNAME.yml` for host-specific overrides. Keep private settings
 outside the repository and load them with `-e @/path/to/settings.yml`. Role defaults
 provide fallback settings; inventory variables customize a profile; `-e` overrides
 both. See [Ansible inventory documentation](https://docs.ansible.com/projects/ansible/latest/inventory_guide/intro_inventory.html).
+
+### Apple container
+
+The development category selects the `apple_container` role using
+`macos.apple_container: true`. It installs the latest stable release from
+[apple/container](https://github.com/apple/container) on Apple silicon with macOS
+26 or later. Each run queries GitHub's latest-release API and compares it with
+`/usr/local/bin/container --version`. Older installations are upgraded; current
+or newer versions are left untouched. Unlike the Homebrew package tasks, this
+component tracks upstream updates. GitHub access is needed even in check mode.
+
+The role downloads the signed `.pkg`, checks its GitHub SHA-256 digest and macOS
+package signature, and invokes `/usr/sbin/installer -pkg ... -target /` with
+task-level `become: true`. Run Ansible as your normal account:
+
+```sh
+ansible-playbook applications.yml --ask-become-pass
+```
+
+`--ask-become-pass` (`-K`) prompts for your sudo password. Ansible uses it only for
+tasks requesting privilege escalation; the password is not saved in this repository.
+Do not run the whole playbook with sudo. Check mode previews the change without
+downloading the package or requesting administrator access, so omit `-K` for previews.
+
+Before an upgrade, stop a running service with `container system stop`; the role
+fails with instructions instead of interrupting workloads. Temporary installer files
+are removed after success or failure. The role does not start services, download a
+Linux kernel, or create containers. After installation, run `container system start`
+as your normal user when ready. Avoid managing the same installation through Homebrew.
+
+Role defaults include `apple_container_release_url`, `apple_container_executable`,
+`apple_container_installer_executable`, `apple_container_pkgutil_executable`, and
+`apple_container_launchctl_executable`. Their defaults use GitHub and Apple's standard
+paths; overrides support trusted mirrors and isolated fixture validation.
 
 ## Shared CLI paths
 
@@ -403,6 +441,8 @@ Syntax-check all entry points:
 ansible-playbook site.yml --syntax-check
 ansible-playbook applications.yml --syntax-check
 ansible-playbook terminal.yml --syntax-check
+ansible-playbook macos.yml --syntax-check
+ansible-playbook shell-paths.yml --syntax-check
 ansible-inventory --graph
 ansible-playbook site.yml --list-tags
 ```
@@ -436,6 +476,14 @@ Fish, Bash, and Zsh startup behavior with temporary homes. The integration suite
 seeds healthy Fisher metadata and placeholder files to avoid downloads; it does not exercise real
 plugin downloads or Homebrew bootstrapping. On a fresh machine, check mode can
 report missing terminal tools that the preceding application play would install.
+
+Run `python3 tests/check-apple-container.py` with Ansible on PATH for offline Apple
+container installer checks. A temporary HTTP server supplies release metadata and
+packages; fake installer/signature/service commands run without sudo. These cover
+install, upgrade, idempotence, check mode, platform/category skips, running-service
+protection, checksum/signature failures, and cleanup. The general validation suite
+disables Apple container because it is covered by this dedicated suite. Actual Apple
+package installation, sudo escalation, and Linux execution are not exercised.
 
 Run `python3 tests/check-fisher-repair.py` for offline repair regression checks.
 These use a local bootstrap fixture to verify manifest-only recovery, missing-file

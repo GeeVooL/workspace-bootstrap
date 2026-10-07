@@ -1,0 +1,107 @@
+---
+- name: Resolve the latest stable Apple container release
+  ansible.builtin.uri:
+    url: "{{ apple_container_release_url }}"
+    return_content: true
+  register: apple_container_release
+  check_mode: false
+  changed_when: false
+
+- name: Select the signed installer
+  ansible.builtin.set_fact:
+    apple_container_version: "{{ apple_container_release.json.tag_name | regex_replace('^v', '') }}"
+    apple_container_assets: "{{ apple_container_release.json.assets | selectattr('name', 'search', '-installer-signed\\.pkg$') | list }}"
+
+- name: Require a stable release with one signed installer and SHA-256 digest
+  ansible.builtin.assert:
+    that:
+      - not apple_container_release.json.draft
+      - not apple_container_release.json.prerelease
+      - apple_container_version is match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+      - apple_container_assets | length == 1
+      - apple_container_assets[0].digest is match('^sha256:[0-9a-f]{64}$')
+
+- name: Check the installed Apple container executable
+  ansible.builtin.stat:
+    path: "{{ apple_container_executable }}"
+  register: apple_container_binary
+
+- name: Read the installed Apple container version
+  ansible.builtin.command:
+    argv: ["{{ apple_container_executable }}", --version]
+  register: apple_container_installed
+  when: apple_container_binary.stat.exists
+  check_mode: false
+  changed_when: false
+
+- name: Determine whether Apple container needs installation
+  ansible.builtin.set_fact:
+    apple_container_needs_install: >-
+      {{ not apple_container_binary.stat.exists or
+         (apple_container_installed.stdout | default('') | regex_search('[0-9]+\.[0-9]+\.[0-9]+') | default('0.0.0', true))
+         is version(apple_container_version, '<') }}
+
+- name: Preview Apple container installation or upgrade
+  ansible.builtin.debug:
+    msg: "Will install Apple container {{ apple_container_version }} using its signed package (requires sudo)."
+  changed_when: true
+  when:
+    - ansible_check_mode
+    - apple_container_needs_install
+
+- name: Apply Apple container installation or upgrade
+  when:
+    - not ansible_check_mode
+    - apple_container_needs_install
+  block:
+    - name: Check for a running Apple container service
+      ansible.builtin.command:
+        argv: ["{{ apple_container_launchctl_executable }}", list]
+      register: apple_container_services
+      changed_when: false
+
+    - name: Require Apple container to be stopped before installing
+      ansible.builtin.assert:
+        that:
+          - apple_container_services.stdout is not search('com\\.apple\\.container(?:\\s|\\.|$)')
+        fail_msg: Stop Apple container with 'container system stop', then rerun the playbook.
+
+    - name: Create a temporary Apple container installer directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: -apple-container
+      register: apple_container_temp
+
+    - name: Download the signed Apple container installer
+      ansible.builtin.get_url:
+        url: "{{ apple_container_assets[0].browser_download_url }}"
+        dest: "{{ apple_container_temp.path }}/container.pkg"
+        checksum: "{{ apple_container_assets[0].digest }}"
+        mode: '0600'
+
+    - name: Verify the installer signature
+      ansible.builtin.command:
+        argv: ["{{ apple_container_pkgutil_executable }}", --check-signature, "{{ apple_container_temp.path }}/container.pkg"]
+      changed_when: false
+
+    - name: Install the signed Apple container package as administrator
+      ansible.builtin.command:
+        argv: ["{{ apple_container_installer_executable }}", -pkg, "{{ apple_container_temp.path }}/container.pkg", -target, /]
+      become: true
+      become_user: root
+      changed_when: true
+
+    - name: Verify the installed Apple container version
+      ansible.builtin.command:
+        argv: ["{{ apple_container_executable }}", --version]
+      register: apple_container_verified
+      changed_when: false
+      failed_when: >-
+        (apple_container_verified.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) != apple_container_version
+
+  always:
+    - name: Remove the temporary Apple container installer directory
+      ansible.builtin.file:
+        path: "{{ apple_container_temp.path }}"
+        state: absent
+      when: apple_container_temp.path is defined
