@@ -1,0 +1,9 @@
+# Managed by Workstation Bootstrap. Shared by Bash and Zsh.
+{% for directory in workstation_bin_paths | reverse %}
+if [ -d {{ directory | quote }} ]; then
+    case ":${PATH-}:" in
+        *:{{ directory | quote }}:*) ;;
+        *) export PATH={{ directory | quote }}${PATH:+":$PATH"} ;;
+    esac
+fi
+{% endfor %}

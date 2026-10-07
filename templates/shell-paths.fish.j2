@@ -1,0 +1,4 @@
+# Managed by Workstation Bootstrap. Load before interactive tool integrations.
+{% for directory in workstation_bin_paths | reverse %}
+fish_add_path --path {{ directory | quote }}
+{% endfor %}

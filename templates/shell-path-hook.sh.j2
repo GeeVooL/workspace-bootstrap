@@ -1,0 +1,3 @@
+if [ -r {{ (terminal_config_root ~ '/workstation-bootstrap/path.sh') | quote }} ]; then
+    . {{ (terminal_config_root ~ '/workstation-bootstrap/path.sh') | quote }}
+fi

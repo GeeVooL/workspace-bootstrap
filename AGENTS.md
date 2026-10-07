@@ -3,8 +3,9 @@
 ## Purpose and structure
 
 Workstation Bootstrap provides Ansible configuration for development machines on
-macOS and Linux. The current scope is the terminal and shell; package installation,
-editors, and development toolchains are planned. Read README.md for current behavior.
+macOS and Linux. The current scope is the terminal and shell, plus macOS package
+installation; editors and development toolchains are planned. Read README.md for
+current behavior.
 
 - Keep playbooks focused on orchestration. Store static configuration in `files/`
   and use separate templates when values need substitution.
@@ -30,9 +31,13 @@ editors, and development toolchains are planned. Read README.md for current beha
 ## Validation
 
 - Run `ansible-playbook -i localhost, terminal.yml --syntax-check` after playbook edits.
+- Run `ansible-playbook -i localhost, macos.yml --syntax-check` after macOS playbook edits.
+- Validate package installation with a temporary Homebrew stand-in; do not install
+  or upgrade live packages unless deployment was requested.
 - Run `fish --no-execute` on each changed Fish snippet.
 - For changes to deployment behavior, test against temporary paths using
-  `terminal_config_root` and `ghostty_config_path` overrides. Check the resulting
+  `terminal_config_root`, `ghostty_config_path`, `shell_home`, and `shell_zdotdir`
+  overrides. Check the resulting
   files and confirm a second apply reports zero changes.
 - Use focused behavior checks for Git shortcut changes; verify staged versus
   unstaged diffs and argument handling when relevant.
