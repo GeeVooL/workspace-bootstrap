@@ -9,6 +9,7 @@
 - name: Validate application category selection
   ansible.builtin.assert:
     that:
+      - applications_setup_categories is sequence and applications_setup_categories is not string
       - applications_catalog is mapping
       - applications_enabled_categories is sequence and applications_enabled_categories is not string
       - applications_excluded_categories is sequence and applications_excluded_categories is not string
@@ -21,9 +22,14 @@
     that: workplace_only | string | lower in ['true', 'false']
     fail_msg: Set workplace_only to true or false.
 
+- name: Select categories while preserving their order
+  ansible.builtin.set_fact:
+    selected_application_categories: "{{ applications_enabled_categories | unique | reject('in', applications_excluded_categories) | list }}"
+    applications_snap_setup_pending: false
+
 - name: Install selected application categories
   ansible.builtin.include_tasks: category.yml
-  loop: "{{ applications_enabled_categories | unique | difference(applications_excluded_categories) }}"
+  loop: "{{ ((applications_setup_categories | unique | select('in', selected_application_categories) | list) + (selected_application_categories | reject('in', applications_setup_categories) | list)) }}"
   loop_control:
     loop_var: application_category
     label: "{{ application_category }}"

@@ -15,7 +15,7 @@
   check_mode: false
 
 - name: Install through existing Snap
-  when: application_snap.rc == 0
+  when: application_snap.rc == 0 and not (applications_snap_setup_pending | default(false))
   block:
     - name: Check whether the Snap is installed
       ansible.builtin.command:
@@ -39,7 +39,7 @@
       when: not ansible_check_mode and application_snap_package.rc != 0
 
 - name: Use Fedora COPR when Snap is absent
-  when: application_snap.rc != 0
+  when: application_snap.rc != 0 and not (applications_snap_setup_pending | default(false))
   block:
     - name: Require Fedora with DNF for the COPR fallback
       ansible.builtin.assert:
@@ -83,3 +83,9 @@
           ansible.builtin.command:
             argv: ["{{ ansible_facts.pkg_mgr }}", install, '-y', "{{ application.package }}"]
           changed_when: true
+
+- name: Preview installation after pending Snap setup
+  ansible.builtin.debug:
+    msg: "Would install {{ application.name }} through Snap after the planned Snap setup."
+  changed_when: true
+  when: ansible_check_mode and (applications_snap_setup_pending | default(false))

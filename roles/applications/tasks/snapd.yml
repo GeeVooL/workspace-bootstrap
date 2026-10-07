@@ -1,0 +1,115 @@
+---
+- name: Require a supported Snap setup platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == 'Linux'
+      - ansible_facts.service_mgr == 'systemd'
+      - (ansible_facts.distribution in ['Debian', 'Ubuntu'] and ansible_facts.pkg_mgr == 'apt') or (ansible_facts.distribution == 'Fedora' and ansible_facts.pkg_mgr in ['dnf', 'dnf5'])
+    fail_msg: Snap setup supports Debian/Ubuntu and conventional Fedora with systemd. On other systems, configure Snap manually and exclude package_managers.
+
+- name: Check for an immutable OSTree host
+  ansible.builtin.stat:
+    path: /run/ostree-booted
+  register: application_snap_ostree
+
+- name: Require a mutable system for Snap setup
+  ansible.builtin.assert:
+    that: not application_snap_ostree.stat.exists
+    fail_msg: Automatic Snap setup does not support OSTree systems; exclude package_managers and configure the platform manually.
+
+- name: Install Snap daemon from distribution packages
+  ansible.builtin.package:
+    name: snapd
+    state: present
+  become: true
+  register: application_snapd_package
+
+- name: Enable and start the Snap socket
+  ansible.builtin.systemd:
+    name: snapd.socket
+    enabled: true
+    state: started
+  become: true
+  register: application_snapd_socket
+  when: not (ansible_check_mode and application_snapd_package.changed)
+
+- name: Start the Snap daemon
+  ansible.builtin.systemd:
+    name: snapd.service
+    state: started
+  become: true
+  register: application_snapd_service
+  when: not (ansible_check_mode and application_snapd_package.changed)
+
+- name: Remember pending Snap setup for application previews
+  ansible.builtin.set_fact:
+    applications_snap_setup_pending: "{{ ansible_check_mode and (application_snapd_package.changed or application_snapd_socket.changed | default(false) or application_snapd_service.changed | default(false)) }}"
+
+- name: Preview setup after a pending package installation
+  ansible.builtin.debug:
+    msg: Would enable snapd.socket, start snapd, and wait for initialization before installing snaps.
+  when: ansible_check_mode and application_snapd_package.changed
+
+- name: Enable Fedora classic Snap support
+  when: ansible_facts.distribution == 'Fedora'
+  block:
+    - name: Inspect the classic Snap mount path without following links
+      ansible.builtin.stat:
+        path: "{{ applications_snap_mount_path }}"
+        follow: false
+      register: application_snap_mount
+
+    - name: Preserve unrelated paths at the Snap mount location
+      ansible.builtin.assert:
+        that: not application_snap_mount.stat.exists or (application_snap_mount.stat.islnk | default(false) and application_snap_mount.stat.lnk_source == applications_snap_mount_source)
+        fail_msg: "{{ applications_snap_mount_path }} already exists with unexpected contents; resolve it manually before enabling classic Snap support."
+
+    - name: Link the classic Snap mount path
+      ansible.builtin.file:
+        src: "{{ applications_snap_mount_source }}"
+        dest: "{{ applications_snap_mount_path }}"
+        state: link
+        force: true
+      become: true
+
+- name: Discover the installed Snap executable
+  ansible.builtin.shell: command -v snap
+  args:
+    executable: /bin/sh
+  environment:
+    PATH: "{{ applications_search_path }}"
+  register: application_snapd_command
+  changed_when: false
+  check_mode: false
+  when: not applications_snap_setup_pending
+
+- name: Wait for Snap initialization
+  ansible.builtin.command:
+    argv: ["{{ application_snapd_command.stdout }}", wait, system, seed.loaded]
+  become: true
+  changed_when: false
+  async: 180
+  poll: 2
+  when: not ansible_check_mode
+
+- name: Check the snapd snap on Debian
+  ansible.builtin.command:
+    argv: ["{{ application_snapd_command.stdout }}", list, snapd]
+  register: application_snapd_snap
+  changed_when: false
+  failed_when: application_snapd_snap.rc not in [0, 1]
+  check_mode: false
+  when: ansible_facts.distribution == 'Debian' and not applications_snap_setup_pending
+
+- name: Preview Debian snapd snap installation
+  ansible.builtin.debug:
+    msg: Would install the snapd snap on Debian.
+  changed_when: true
+  when: ansible_check_mode and ansible_facts.distribution == 'Debian' and (applications_snap_setup_pending or application_snapd_snap.rc != 0)
+
+- name: Install the snapd snap on Debian
+  ansible.builtin.command:
+    argv: ["{{ application_snapd_command.stdout }}", install, snapd]
+  become: true
+  changed_when: true
+  when: not ansible_check_mode and ansible_facts.distribution == 'Debian' and application_snapd_snap.rc != 0

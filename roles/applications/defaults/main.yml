@@ -2,14 +2,17 @@
 applications_catalog: {}
 applications_enabled_categories: "{{ applications_catalog.keys() | list }}"
 applications_excluded_categories: []
+applications_setup_categories: []
 workplace_only: false
 homebrew_search_path: "{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin"
 applications_home: "{{ ansible_facts.env.HOME }}"
 applications_bin_dir: "{{ applications_home }}/.local/bin"
-applications_search_path: "{{ applications_bin_dir }}:{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
+applications_search_path: "{{ applications_bin_dir }}:{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin:/var/lib/snapd/snap/bin"
 applications_macos_dirs: ["/Applications", "{{ applications_home }}/Applications"]
 applications_macos_install_dir: /Applications
 applications_copr_repo_dir: /etc/yum.repos.d
 applications_fonts_dir: "{{ applications_home }}/.local/share/fonts"
 applications_onepassword_dir: /opt/1Password
 applications_xcode_select: /usr/bin/xcode-select
+applications_snap_mount_path: /snap
+applications_snap_mount_source: /var/lib/snapd/snap

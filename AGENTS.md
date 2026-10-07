@@ -5,7 +5,7 @@
 Workstation Bootstrap provides Ansible configuration for development machines on
 macOS and Linux. The current scope is the terminal and shell, plus macOS utilities and Fork installation,
 VS Code, Zed, Typora, Ghostty, 1Password, and fonts on macOS and Linux,
-Flatpak/Flathub on Linux, Little Snitch and Apple developer tools on macOS,
+Snap setup and Flatpak/Flathub on Linux, Little Snitch and Apple developer tools on macOS,
 Homebrew bootstrapping, Fisher
 plugins, and shared shell paths. Further development toolchains are planned. Read README.md for current behavior.
 

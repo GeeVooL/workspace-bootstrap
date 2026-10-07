@@ -4,7 +4,7 @@ Ansible configuration for development workstations on macOS and Linux. The curre
 setup installs VS Code, Zed, Typora, 1Password, and fonts on macOS and supported Linux distributions,
 Fork, Little Snitch, and Apple container on supported Macs, and configures Fish, Starship, fzf, zoxide, and optional
 Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS.
-Linux CLI prerequisites are still installed separately; Ghostty, Flatpak, and Flathub are managed.
+Linux CLI prerequisites are still installed separately; Ghostty, Snap setup, Flatpak, and Flathub are managed.
 Xcode and Apple Command Line Tools are available on macOS.
 
 ## Structure
@@ -66,7 +66,7 @@ Linux editors use official installers and native packages as described below. Na
 installation is also implemented, but package names must be supplied for the target distribution.
 Linux package tasks use privilege escalation; pass `--ask-become-pass` if needed.
 The Homebrew role preserves main’s noninteractive bootstrap behavior. Linux
-Flatpak and its per-user Flathub remote are managed in the `desktop` category. Ghostty can use existing Snap or a Fedora COPR repository.
+Flatpak and its per-user Flathub remote are managed in the `desktop` category. The `package_managers` category sets up Snap before apps; Ghostty can otherwise use existing Snap or a Fedora COPR repository.
 
 To bootstrap without an existing Homebrew installation, install Ansible into a
 Python virtual environment first:
@@ -158,7 +158,8 @@ it does not install applications. Homebrew tasks install only missing packages, 
 ## Application categories and machine profiles
 
 The local inventory's `group_vars/workstations.yml` defines the application catalog.
-All catalog categories are enabled by default. Currently `utilities` contains mise, fish, git, starship, fzf, zoxide, bat, fd,
+All catalog categories are enabled by default. `package_managers` sets up Snap on supported Linux systems.
+Currently `utilities` contains mise, fish, git, starship, fzf, zoxide, bat, fd,
 ripgrep, tree, and jq on macOS; `development` contains Fork and Apple container,
 and `editors` contains VS Code and Zed on both platforms. `writing` contains Typora
 on both platforms; `security` contains 1Password on both platforms and Little Snitch on macOS.
@@ -168,7 +169,10 @@ and Apple Command Line Tools on macOS. Apple container is skipped
 on Intel Macs and macOS versions below 26. `utilities` also installs Ghostty on
 macOS and supported Linux setups. Linux CLI utilities remain unmanaged.
 Excluding a category skips installation;
-it does not uninstall existing applications.
+it does not uninstall existing applications. `applications_setup_categories` lists categories
+that run first when selected; the inventory sets it to `[package_managers]`.
+Explicit category subsets must include `package_managers` if Snap setup is needed.
+Other categories retain their requested order.
 
 Exclude a category for one run, or select an explicit subset:
 
@@ -236,6 +240,40 @@ Fill the lists with the packages you want; empty or omitted platform entries do
 nothing and require no package manager. Fork has no official Linux release.
 Catalog overrides replace the dictionary, so supply the complete desired catalog.
 
+### Snap setup
+
+`package_managers` contains Snap (`workplace_permitted: true`) on Linux. It runs
+before other selected categories, including when the caller lists them in a different
+order. The default personal and workplace profiles both include it:
+
+```sh
+./bootstrap workplace --apps-only --check
+./bootstrap workplace --apps-only
+# Skip setup and use existing package managers instead:
+./bootstrap personal --exclude package_managers
+# Set up only Snap:
+./bootstrap workplace --apps-only -- -e '{"applications_enabled_categories":["package_managers"]}'
+```
+
+Setup supports Debian, Ubuntu, and conventional Fedora with systemd. It installs
+the distribution's `snapd` package, enables and starts `snapd.socket`, starts the
+daemon, and waits up to three minutes for initial seeding. Debian also installs
+the `snapd` snap, following [Snap's Debian instructions](https://snapcraft.io/docs/tutorials/install-the-daemon/debian/).
+Fedora gets the `/snap` symlink needed for classic snaps, following
+[Snap's Fedora instructions](https://snapcraft.io/docs/tutorials/install-the-daemon/fedora/).
+An unrelated file, directory, or symlink at `/snap` is preserved and reported as an
+error. Existing services are repaired as needed; rerunning does not reinstall snaps.
+
+This does not configure extra distribution repositories or bypass distro policies
+that disable Snap. Other distributions, non-systemd hosts, and OSTree systems need
+manual setup and exclusion of `package_managers`. Package and service errors stop
+the run. A new login or reboot may be needed for desktop session paths to update;
+Ansible uses explicit search paths for same-run installations.
+
+With default setup enabled, Fedora uses Snap for Ghostty and Typora. Ghostty's COPR
+fallback remains available when setup is excluded and Snap is absent. Approving the
+Snap package manager does not approve every app available from the Snap Store.
+
 ### Ghostty installation
 
 Ghostty is part of `utilities` and is workplace-permitted. Existing installations
@@ -247,7 +285,7 @@ Linux uses the following order:
    documented by [Ghostty](https://ghostty.org/docs/install/binary). The role
    downloads its repository configuration and installs the native package.
 3. Other Linux systems without Snap fail with instructions to configure Snap or
-   install Ghostty manually. Snap itself is not bootstrapped.
+   install Ghostty manually. Snap setup is handled separately by `package_managers`.
 
 Snap service or installation failures are reported; they do not trigger COPR
 fallback. Fedora Atomic/rpm-ostree installation is not supported by this fallback.
@@ -311,7 +349,7 @@ On Linux, Typora uses the official 1.14.9 `.deb` downloads linked by its
 preferred. On Fedora and other Linux distributions without a configured native
 package, an existing Snap installation is used with `snap install typora` (without
 classic confinement). If Snap is absent, Ansible prints a skip message and continues;
-there is no need to exclude `writing`. Snap is not bootstrapped automatically.
+there is no need to exclude `writing`. Include `package_managers` to set up Snap first.
 Snap service and installation errors fail the run instead of being treated as skips.
 The [Snap version's sandbox limitations](https://support.typora.io/Snap/#limitations-for-the-snap-version)
 affect filesystem access and external export/image-upload commands.
@@ -687,3 +725,8 @@ App Store, Homebrew, Flatpak, and native package installation remain fixture-bas
 
 Run `python3 tests/check-bootstrap.py` for wrapper argument, platform, profile,
 path handling, and exit-status checks using a recording Ansible fixture.
+
+Run `python3 tests/check-snap-setup.py` for offline Snap setup tests covering
+category ordering, workplace filtering, check mode, service repair, mount-path
+preservation, failures, and repeat-run idempotence. Package managers, Snap, and
+systemd are simulated; these checks do not validate real daemon startup or snap mounts.

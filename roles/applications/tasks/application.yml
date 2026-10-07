@@ -40,5 +40,5 @@
 - name: Install missing application using the selected installer
   ansible.builtin.include_tasks: "{{ application.installer }}.yml"
   when:
-    - not application_present or application.installer in ['flatpak', 'command_line_tools']
-    - application.installer in ['dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools']
+    - not application_present or application.installer in ['flatpak', 'command_line_tools', 'snapd']
+    - application.installer in ['dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools', 'snapd']

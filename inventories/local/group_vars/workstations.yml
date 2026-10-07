@@ -1,6 +1,15 @@
 ---
 # Machine-profile policy; reusable roles keep their defaults in roles/*/defaults.
+applications_setup_categories: [package_managers]
 applications_catalog:
+  package_managers:
+    linux:
+      apps:
+        - name: Snap
+          id: snapd
+          workplace_permitted: true
+          commands: [snap]
+          installer: snapd
   utilities:
     macos:
       formulae:
