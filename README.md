@@ -12,7 +12,8 @@ settings for a fresh machine.
 | --- | --- |
 | Fish | Git abbreviations covering status, diffs, commits, branches, history, and synchronization |
 | Starship | Prompt initialization; existing styling is preserved |
-| fzf | Fish integration with a compact, bordered picker |
+| Fisher | Installs required Fish plugins while preserving additional plugins |
+| fzf.fish | File, Git, history, process, and variable pickers with previews |
 | zoxide | Directory tracking and `z` / `zi` shortcuts |
 | Ghostty | Launches Fish; optional |
 
@@ -23,17 +24,19 @@ before modifying configuration. Package installation is not automated yet.
 
 - macOS or Linux
 - Ansible Core
-- Fish, Git, Starship, fzf 0.48 or later, and zoxide on `PATH`
+- Fish 4.0+, fzf 0.33+, fd 8.5+, and bat 0.16+ on `PATH`
+- Git, Starship, zoxide, curl, and tar on `PATH`
+- Internet access to GitHub when installing missing plugins
 - Ghostty, when using the Ghostty configuration task
 
-No additional Ansible collections are required. Recent Fish and fzf releases are
-recommended; available bindings, including Shift-Tab completion, depend on the
-installed fzf version.
+No additional Ansible collections are required. On Linux, some distributions name
+`fd` and `bat` executables `fdfind` and `batcat`; provide `fd` and `bat` on `PATH`
+before running the playbook.
 
 On macOS with Homebrew:
 
 ```sh
-brew install ansible fish git starship fzf zoxide
+brew install ansible fish git starship fzf fd bat zoxide
 brew install --cask ghostty
 ```
 
@@ -77,8 +80,12 @@ files/
   fish/
     git-abbreviations.fish
     starship.fish
-    fzf.fish
+    fzf-options.fish
     zoxide.fish
+  fisher/
+    fish_plugins
+    install.fish
+    legacy-fzf.fish
 ```
 
 Edit Fish configuration in `files/fish/`. The playbook copies these files to the
@@ -91,7 +98,7 @@ to `~/.config/fish/conf.d`:
 
 - `git-abbreviations.fish`
 - `starship.fish`
-- `fzf.fish`
+- `fzf-options.fish`
 - `zoxide.fish`
 
 Existing files with those names are replaced when their contents differ. Ansible
@@ -118,6 +125,50 @@ configuration file for the existing setup.
 The playbook does not change the account's login shell or manage shell history,
 zoxide's database, or `starship.toml`. Starship uses its defaults when no separate
 prompt configuration exists.
+
+## Fish plugins
+
+The required plugin list lives in `files/fisher/fish_plugins`:
+
+- [Fisher](https://github.com/jorgebucaran/fisher)
+- [fzf.fish](https://github.com/PatrickF1/fzf.fish)
+
+Ansible downloads a Fisher bootstrap function from a fixed commit and installs
+missing plugins. Plugin versions follow their upstream defaults at first install;
+existing installations are not automatically upgraded. Additional Fisher plugins
+are preserved. Fisher maintains the installed list in `fish/fish_plugins`, plugin
+files in `fish/functions`, `fish/completions`, and `fish/conf.d`, and installation
+metadata in Fish's universal variables. These generated files are not committed.
+The bootstrap function is cached under `fish/.bootstrap`.
+
+Add a plugin interactively with `fisher install owner/repository`, or add it to the
+repository's required list to install it on subsequent playbook runs. Removing a
+line from that list does not uninstall it; use `fisher remove owner/repository`.
+Run `fisher update` explicitly to update installed plugins.
+
+The previous repository-managed `conf.d/fzf.fish` is backed up and removed only
+when its content matches the old snippet exactly. Fisher then installs its own
+`conf.d/fzf.fish`. Modified or unrelated files are preserved; a conflicting file
+can prevent installation and needs to be reconciled manually. Remove any separate
+`fzf --fish | source` initialization or other fzf plugins before using fzf.fish.
+
+Default fzf.fish bindings:
+
+| Binding | Search |
+| --- | --- |
+| Ctrl+Alt+F | Files and directories, with previews |
+| Ctrl+Alt+L | Git history, with commit diffs |
+| Ctrl+Alt+S | Git status, with file diffs |
+| Ctrl+R | Command history |
+| Ctrl+Alt+P | Processes |
+| Ctrl+V | Shell variables |
+
+Picker appearance remains in `files/fish/fzf-options.fish`. Plugin installation
+runs in noninteractive Fish with `XDG_CONFIG_HOME` set to
+`terminal_config_root`, so temporary deployments use isolated Fish configuration
+and Fisher metadata. Fish startup files should guard interactive-only commands
+with `status is-interactive`. Check mode reports missing plugins without downloading or
+installing them. No plugins are downloaded when opening a shell.
 
 ## Git shortcuts
 
@@ -175,9 +226,11 @@ ansible-playbook -i localhost, terminal.yml --syntax-check
 ```
 
 Fish snippets are syntax-checked before installation. The current playbook has
-been validated on macOS with Ansible Core 2.15.13, including check mode, application
-to a temporary configuration directory, and a second run with zero changes.
-Linux execution has not yet been validated.
+been validated on macOS with Ansible Core 2.15.13 and Fish 4.9.3, including a fresh
+check-mode run without configuration writes, migration in a temporary directory,
+persistent Fisher metadata, fzf bindings, preservation of an additional plugin,
+and a second apply with zero changes. Ghostty settings and the legacy fzf backup
+were also checked. Linux execution has not yet been validated.
 
 ## Planned scope
 
