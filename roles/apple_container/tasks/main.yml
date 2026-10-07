@@ -1,0 +1,15 @@
+---
+- name: Report unsupported Apple container platform
+  ansible.builtin.debug:
+    msg: Apple container requires Apple silicon and macOS 26 or later; skipping installation.
+  when: >-
+    ansible_facts.system != 'Darwin' or
+    ansible_facts.architecture != 'arm64' or
+    ansible_facts.distribution_version is version('26', '<')
+
+- name: Install Apple container on supported Macs
+  ansible.builtin.include_tasks: install.yml
+  when:
+    - ansible_facts.system == 'Darwin'
+    - ansible_facts.architecture == 'arm64'
+    - ansible_facts.distribution_version is version('26', '>=')

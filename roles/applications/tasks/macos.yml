@@ -1,4 +1,9 @@
 ---
+- name: Install Apple container when selected
+  ansible.builtin.include_role:
+    name: apple_container
+  when: category_apps.apple_container | default(false) | bool
+
 - name: Install selected Homebrew applications
   ansible.builtin.include_role:
     name: homebrew

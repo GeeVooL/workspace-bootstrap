@@ -1,0 +1,6 @@
+---
+apple_container_release_url: https://api.github.com/repos/apple/container/releases/latest
+apple_container_executable: /usr/local/bin/container
+apple_container_installer_executable: /usr/sbin/installer
+apple_container_pkgutil_executable: /usr/sbin/pkgutil
+apple_container_launchctl_executable: /bin/launchctl
