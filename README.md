@@ -219,8 +219,16 @@ Keep `ansible_connection: local` when applying on that machine. The playbooks ta
 the `workstations` group, and roles detect the OS through gathered facts. Merely
 naming a group `macos` does not detect the operating system.
 
-Use `host_vars/HOSTNAME.yml` for host-specific overrides. Keep private settings
-outside the repository and load them with `-e @/path/to/settings.yml`. Role defaults
+Use `host_vars/HOSTNAME.yml` for host-specific overrides. For the local inventory,
+copy the commented example once, then uncomment the settings you need:
+
+```sh
+cp -n inventories/local/host_vars/localhost.yml.example inventories/local/host_vars/localhost.yml
+```
+
+Ansible loads `localhost.yml` automatically; Git ignores it. The `.example` file
+is only a template and is not loaded by Ansible. Keep secrets outside the repository
+and load them with `-e @/path/to/settings.yml`. Role defaults
 provide fallback settings; inventory variables customize a profile; `-e` overrides
 both. See [Ansible inventory documentation](https://docs.ansible.com/projects/ansible/latest/inventory_guide/intro_inventory.html).
 

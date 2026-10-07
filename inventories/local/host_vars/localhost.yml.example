@@ -1,0 +1,10 @@
+# Copy this file to localhost.yml in the same directory for local overrides.
+# Ansible loads localhost.yml automatically; Git ignores that local file.
+# Uncomment and adjust settings as needed. With only comments, no overrides apply.
+#
+# configure_ghostty: false
+# applications_excluded_categories:
+#   - development
+#
+# Never commit credentials or machine history. Keep secrets outside the repository
+# and load them with -e @/path/to/settings.yml.
