@@ -3,6 +3,7 @@
 # Uncomment and adjust settings as needed. With only comments, no overrides apply.
 #
 # configure_ghostty: false
+# workplace_only: true
 # applications_excluded_categories:
 #   - development
 #

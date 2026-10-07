@@ -1,12 +1,14 @@
 ---
+- name: Select applications permitted by the active workplace policy
+  ansible.builtin.set_fact:
+    category_apps: "{{ lookup('ansible.builtin.template', role_path ~ '/templates/selected-applications.json.j2') | from_json }}"
+  vars:
+    category_definition: "{{ applications_catalog[application_category]['macos' if ansible_facts.system == 'Darwin' else 'linux'] | default({}) }}"
+
 - name: Install macOS applications
   ansible.builtin.include_tasks: macos.yml
-  vars:
-    category_apps: "{{ applications_catalog[application_category].macos | default({}) }}"
   when: ansible_facts.system == 'Darwin'
 
 - name: Install Linux applications
   ansible.builtin.include_tasks: linux.yml
-  vars:
-    category_apps: "{{ applications_catalog[application_category].linux | default({}) }}"
   when: ansible_facts.system == 'Linux'

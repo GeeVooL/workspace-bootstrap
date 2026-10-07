@@ -3,27 +3,43 @@
 applications_catalog:
   utilities:
     macos:
-      formulae: [mise, fish, git, starship, fzf, zoxide, bat, fd, ripgrep, tree, jq]
+      formulae:
+        - {name: mise, workplace_permitted: true}
+        - {name: fish, workplace_permitted: true}
+        - {name: git, workplace_permitted: true}
+        - {name: starship, workplace_permitted: true}
+        - {name: fzf, workplace_permitted: true}
+        - {name: zoxide, workplace_permitted: true}
+        - {name: bat, workplace_permitted: true}
+        - {name: fd, workplace_permitted: true}
+        - {name: ripgrep, workplace_permitted: true}
+        - {name: tree, workplace_permitted: true}
+        - {name: jq, workplace_permitted: true}
       casks: []
     linux:
       packages: []
   development:
     macos:
-      casks: [fork]
+      casks:
+        - {name: fork, workplace_permitted: false}
       formulae: []
-      apple_container: true
+      apple_container:
+        enabled: true
+        workplace_permitted: true
     linux:
       packages: []
   editors:
     macos:
       apps:
         - name: Visual Studio Code
+          workplace_permitted: true
           id: vscode
           commands: [code]
           bundle: Visual Studio Code.app
           installer: dmg
           url: https://update.code.visualstudio.com/latest/darwin-universal-dmg/stable
         - name: Zed
+          workplace_permitted: true
           id: zed
           commands: [zed]
           bundle: Zed.app
@@ -32,6 +48,7 @@ applications_catalog:
     linux:
       apps:
         - name: Visual Studio Code
+          workplace_permitted: true
           id: vscode
           commands: [code]
           paths:
@@ -50,6 +67,7 @@ applications_catalog:
               aarch64: https://update.code.visualstudio.com/latest/linux-rpm-arm64/stable
           signing_key: https://packages.microsoft.com/keys/microsoft.asc
         - name: Zed
+          workplace_permitted: true
           id: zed
           commands: [zed, zeditor, zedit]
           paths:

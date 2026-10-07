@@ -1,0 +1,18 @@
+{# Normalize package entries and filter before any installer or discovery runs. #}
+{% set selected = {'formulae': [], 'casks': [], 'packages': [], 'apps': []} %}
+{% for kind in ['formulae', 'casks', 'packages'] %}
+{% for package in category_definition[kind] | default([]) %}
+{% if not (workplace_only | bool) or (package is mapping and package.workplace_permitted | default(false) == true) %}
+{% set _ = selected[kind].append(package.name if package is mapping else package) %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% for application in category_definition.apps | default([]) %}
+{% if not (workplace_only | bool) or application.workplace_permitted | default(false) == true %}
+{% set _ = selected.apps.append(application) %}
+{% endif %}
+{% endfor %}
+{% set container = category_definition.apple_container | default(false) %}
+{% set container_enabled = container.enabled | default(true) if container is mapping else container %}
+{% set container_permitted = container is mapping and container.workplace_permitted | default(false) == true %}
+{{ selected | combine({'apple_container': (container_enabled | bool) and (not (workplace_only | bool) or container_permitted)}) | to_json }}

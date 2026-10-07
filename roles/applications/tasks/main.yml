@@ -16,6 +16,11 @@
       - applications_excluded_categories | difference(applications_catalog.keys() | list) | length == 0
     fail_msg: Enabled and excluded categories must be lists of names from applications_catalog.
 
+- name: Validate workplace selection
+  ansible.builtin.assert:
+    that: workplace_only | string | lower in ['true', 'false']
+    fail_msg: Set workplace_only to true or false.
+
 - name: Install selected application categories
   ansible.builtin.include_tasks: category.yml
   loop: "{{ applications_enabled_categories | unique | difference(applications_excluded_categories) }}"

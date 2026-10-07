@@ -2,6 +2,7 @@
 applications_catalog: {}
 applications_enabled_categories: "{{ applications_catalog.keys() | list }}"
 applications_excluded_categories: []
+workplace_only: false
 homebrew_search_path: "{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin"
 applications_home: "{{ ansible_facts.env.HOME }}"
 applications_bin_dir: "{{ applications_home }}/.local/bin"

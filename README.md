@@ -144,15 +144,45 @@ Category selection uses variables; the runnable tags are `applications` and
 `terminal`, and `shell_paths`. `--tags development` is not a category selector. Unknown category
 names fail validation rather than silently skipping work.
 
+### Workplace selection
+
+Install only apps explicitly approved in the catalog with:
+
+```sh
+ansible-playbook site.yml -e workplace_only=true
+ansible-playbook applications.yml -e workplace_only=true --check --diff
+```
+
+`workplace_only` defaults to `false`, which includes all selected apps. Set it in
+`host_vars/localhost.yml` for a work machine, or override it on the command line.
+Workplace mode includes only entries with the YAML boolean `workplace_permitted: true`;
+false or missing approval is skipped before discovery, downloads, and installation.
+Category selections and exclusions still apply. This filters application installation;
+it does not uninstall existing apps or change terminal configuration and Fisher plugins.
+
+The current catalog marks all apps except Fork as permitted, according to this
+repository's workplace policy. These labels record approval, not a licensing determination.
+New apps require explicit approval to be included in workplace mode.
+
+For `formulae`, `casks`, and Linux `packages`, use entries such as
+`{name: git, workplace_permitted: true}`. Existing plain package strings still
+work in normal mode, but are unapproved in workplace mode. For entries under
+`apps`, add `workplace_permitted: true` beside `name` and `installer`.
+Apple Container uses `{enabled: true, workplace_permitted: true}`; the legacy
+`apple_container: true` form remains supported only in normal mode.
+
+### Extending the catalog
+
 Add categories such as `browsers` or `media` as catalog entries:
 
 ```yaml
 applications_catalog:
   development:
     macos:
-      casks: [fork]
+      casks:
+        - {name: fork, workplace_permitted: false}
       formulae: []
-      apple_container: true
+      apple_container: {enabled: true, workplace_permitted: true}
     linux:
       packages: []
   browsers:
@@ -235,7 +265,7 @@ both. See [Ansible inventory documentation](https://docs.ansible.com/projects/an
 ### Apple container
 
 The development category selects the `apple_container` role using
-`macos.apple_container: true`. It installs the latest stable release from
+`macos.apple_container: {enabled: true, workplace_permitted: true}`. It installs the latest stable release from
 [apple/container](https://github.com/apple/container) on Apple silicon with macOS
 26 or later. Each run queries GitHub's latest-release API and compares it with
 `/usr/local/bin/container --version`. Older installations are upgraded; current
@@ -504,3 +534,8 @@ exclusion, check mode, and zero changes on repeat. The suite runs copied roles
 with local download fixtures, simulated disk mounts and package managers, and
 substitutes privileged apt/key modules in that copy. Actual Linux package
 installation, GUI launches, and upstream downloads are not tested by this suite.
+
+Run `python3 tests/check-workplace.py` for workplace-selection regression checks.
+It replaces installer entry points with recording fixtures and tests approval
+labels, legacy entries, category exclusions, check mode, invalid flag values,
+and repeat-run idempotence. It installs no applications.

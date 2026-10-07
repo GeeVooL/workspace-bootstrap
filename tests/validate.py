@@ -71,7 +71,10 @@ assert 'changed=0' in run('fork-check-installed', 'applications.yml', variables,
 calls = [json.loads(line) for line in (root / 'calls.jsonl').read_text().splitlines()]
 assert calls.count(['install', '--cask', 'fork']) == 1
 run('missing-homebrew', 'applications.yml', {'homebrew_search_path': str(root), 'macos_homebrew_executable': str(root / 'missing-custom-brew')}, '--check', expected=2)
-assert 'changed=0' in run('linux-empty-catalog', 'applications.yml', dict(variables, ansible_facts={'system': 'Linux', 'user_uid': 501}), '--check')
+assert 'changed=0' in run('linux-empty-catalog', 'applications.yml', dict(variables, ansible_facts={
+    'system': 'Linux', 'user_uid': 501,
+    'env': {'HOME': str(root / 'home'), 'PATH': os.environ['PATH']},
+}), '--check')
 
 config = root / 'config' / 'fish'
 config.mkdir(parents=True)
