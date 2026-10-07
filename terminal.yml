@@ -92,6 +92,7 @@
         validate: "{{ fish_executable }} --no-execute %s"
       loop:
         - git-abbreviations.fish
+        - mise.fish
         - starship.fish
         - fzf-options.fish
         - zoxide.fish

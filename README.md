@@ -15,6 +15,7 @@ settings for a fresh machine.
 | Fisher | Installs required Fish plugins while preserving additional plugins |
 | fzf.fish | File, Git, history, process, and variable pickers with previews |
 | zoxide | Directory tracking and `z` / `zi` shortcuts |
+| mise | Interactive Fish activation when installed on `PATH` or in `~/.local/bin` |
 | Ghostty | Launches Fish; optional |
 
 `terminal.yml` runs locally as the current user. It checks for installed tools
@@ -79,6 +80,7 @@ terminal.yml
 files/
   fish/
     git-abbreviations.fish
+    mise.fish
     starship.fish
     fzf-options.fish
     zoxide.fish
@@ -97,6 +99,7 @@ The playbook manages these files under `$XDG_CONFIG_HOME/fish/conf.d`, falling b
 to `~/.config/fish/conf.d`:
 
 - `git-abbreviations.fish`
+- `mise.fish`
 - `starship.fish`
 - `fzf-options.fish`
 - `zoxide.fish`
@@ -215,7 +218,10 @@ ansible-playbook -i localhost, terminal.yml \
 ```
 
 The playbook does not persist changes to `PATH`. Dependencies must also be
-available in interactive Fish sessions.
+available in interactive Fish sessions. The optional mise snippet also checks
+`~/.local/bin/mise`; activation makes mise and its selected tools available in
+interactive Fish sessions and updates tools when changing directories. mise is
+not installed by this playbook, and the snippet does nothing when it is absent.
 
 ## Development
 
