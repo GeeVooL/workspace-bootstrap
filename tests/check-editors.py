@@ -121,7 +121,7 @@ def run(name, v, check=False, expected=0):
     print(name, result.stdout.split('PLAY RECAP')[-1].strip(), flush=True)
     return result.stdout
 
-for entry in ['terminal.yml', 'site.yml', 'applications.yml', 'macos.yml', 'shell-paths.yml']:
+for entry in ['terminal.yml', 'site.yml', 'applications.yml', 'shell-paths.yml']:
     subprocess.run([ansible, entry, '--syntax-check'], env=env, check=True)
 v = variables('Darwin', 'mac')
 assert 'changed=2' in run('mac-check', v, True)

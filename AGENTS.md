@@ -36,7 +36,7 @@ plugins, and shared shell paths. Further development toolchains are planned. Rea
 ## Validation
 
 - Run `ansible-playbook terminal.yml --syntax-check` after playbook edits.
-- Also syntax-check `site.yml`, `applications.yml`, `macos.yml`, and `shell-paths.yml`. Validate package
+- Also syntax-check `site.yml`, `applications.yml`, and `shell-paths.yml`. Validate package
   installation with temporary fixtures; do not install apps on the host unless requested.
 - Run `fish --no-execute` on each changed Fish snippet.
 - For changes to deployment behavior, test against temporary paths using

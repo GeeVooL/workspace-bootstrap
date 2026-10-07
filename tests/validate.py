@@ -59,7 +59,7 @@ def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
     print(name, result.stdout.split('PLAY RECAP')[-1].strip())
     return result.stdout
 
-for playbook in ['site.yml', 'applications.yml', 'terminal.yml', 'macos.yml', 'shell-paths.yml']:
+for playbook in ['site.yml', 'applications.yml', 'terminal.yml', 'shell-paths.yml']:
     run(playbook + '-syntax', playbook, None, '--syntax-check')
 variables = {'homebrew_search_path': str(root)}
 assert 'changed=1' in run('fork-check', 'applications.yml', variables, '--check')

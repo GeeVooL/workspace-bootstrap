@@ -17,7 +17,6 @@ ansible.cfg
 site.yml                         # full setup: applications, then terminal
 applications.yml                 # application installation only
 terminal.yml                     # shell paths and terminal configuration
-macos.yml                        # macOS applications and shell paths
 shell-paths.yml                  # shell paths only
 inventories/local/
   hosts.yml                      # localhost in the workstations group
@@ -75,8 +74,10 @@ Python virtual environment first:
 python3 -m venv .venv
 .venv/bin/python -m pip install ansible-core
 source .venv/bin/activate
-ansible-playbook macos.yml --check --diff
-ansible-playbook macos.yml --ask-become-pass
+ansible-playbook applications.yml --check --diff
+ansible-playbook applications.yml --ask-become-pass
+ansible-playbook shell-paths.yml --check --diff
+ansible-playbook shell-paths.yml
 ```
 
 Run from a native terminal on Apple Silicon. Homebrew bootstraps into the standard
@@ -259,7 +260,7 @@ paths; overrides support trusted mirrors and isolated fixture validation.
 
 ## Shared CLI paths
 
-`terminal.yml` and `macos.yml` invoke the shell-path role; `shell-paths.yml` can also be run independently on macOS or
+`terminal.yml` invokes the shell-path role; `shell-paths.yml` can also be run independently on macOS or
 Linux after installing utilities through the platform's package manager:
 
 ```sh
@@ -431,7 +432,7 @@ temporary directories.
 The optional mise snippet also checks `~/.local/bin/mise`; activation makes mise
 and its selected tools available in interactive Fish sessions and updates tools
 when changing directories. `terminal.yml` does not install mise, and the snippet
-does nothing when it is absent; `macos.yml` installs it by default.
+does nothing when it is absent; `applications.yml` installs it by default on macOS.
 
 ## Development
 
@@ -441,7 +442,6 @@ Syntax-check all entry points:
 ansible-playbook site.yml --syntax-check
 ansible-playbook applications.yml --syntax-check
 ansible-playbook terminal.yml --syntax-check
-ansible-playbook macos.yml --syntax-check
 ansible-playbook shell-paths.yml --syntax-check
 ansible-inventory --graph
 ansible-playbook site.yml --list-tags
