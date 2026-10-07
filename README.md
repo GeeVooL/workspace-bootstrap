@@ -95,8 +95,41 @@ internal inputs passed to the Homebrew role for each category.
 
 ## Usage
 
-Run from the repository root as your normal user. `ansible.cfg` selects the local
-inventory and roles directory. Preview, then apply:
+The `bootstrap` wrapper provides personal and workplace profiles on both macOS and
+Linux. Run as your normal user with Ansible available on PATH:
+
+```sh
+./bootstrap personal --check --diff  # preview a personal Mac or Linux laptop
+./bootstrap personal                 # apply
+./bootstrap workplace --check --diff # preview a workplace laptop
+./bootstrap workplace                # apply only workplace-permitted apps
+```
+
+The default runs `site.yml` (applications, then terminal configuration). Personal
+mode explicitly sets `workplace_only=false`; workplace mode sets it to `true`.
+The selected profile overrides inventory values and forwarded extra variables.
+Platform detection and application installation remain in Ansible.
+
+```sh
+./bootstrap personal --apps-only
+./bootstrap workplace --terminal-only
+./bootstrap personal --exclude apple_development --exclude security
+./bootstrap workplace --no-ask-become-pass # configured credentials/passwordless sudo
+./bootstrap personal -- --limit localhost
+./bootstrap --help
+```
+
+Application runs prompt for the privilege-escalation password, including previews;
+terminal-only runs do not prompt by default. Repeat `--exclude` for multiple
+categories; explicit exclusions replace inventory exclusions. Extra Ansible options
+follow `--`. The wrapper runs from the repository root and selects its `ansible.cfg`,
+even when invoked by absolute path elsewhere; paths in forwarded options are relative
+to that root. It does not install Ansible or terminal prerequisites. On a fresh
+machine, a full preview can report missing tools that an application apply would install.
+Linux terminal prerequisites still need separate installation, as described above.
+
+Direct Ansible commands remain supported. Run these from the repository root;
+`ansible.cfg` selects the local inventory and roles directory. Preview, then apply:
 
 ```sh
 ansible-playbook site.yml --check --diff
@@ -641,3 +674,6 @@ and Apple services are simulated; no production apps are installed.
 This suite has passed on macOS (Ansible Core 2.15.13) and Debian ARM64 in an
 Apple Container (Ansible Core 2.19.11). ARM archive extraction is tested on Linux;
 App Store, Homebrew, Flatpak, and native package installation remain fixture-based.
+
+Run `python3 tests/check-bootstrap.py` for wrapper argument, platform, profile,
+path handling, and exit-status checks using a recording Ansible fixture.

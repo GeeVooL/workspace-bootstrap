@@ -1,0 +1,76 @@
+#!/bin/bash
+# Keep installation and platform policy in Ansible; this is only a CLI adapter.
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: ./bootstrap personal|workplace [options] [-- ANSIBLE_OPTIONS...]
+
+  personal              Include all selected applications
+  workplace             Include only workplace_permitted applications
+  --check               Preview changes without applying them
+  --diff                Show configuration differences
+  --apps-only           Run applications.yml
+  --terminal-only       Run terminal.yml
+  --exclude CATEGORY    Exclude a category; repeat to exclude several
+  --no-ask-become-pass   Use configured privilege credentials/passwordless sudo
+  -h, --help            Show this help
+
+The default is site.yml (applications and terminal configuration). Application
+runs prompt for the privilege-escalation password, including previews. Terminal-
+only runs do not prompt by default. Ansible and terminal prerequisites must
+already be installed; see README.md. macOS/Linux routing is handled by Ansible.
+
+Extra Ansible options follow --. Paths in these options are relative to the
+repository root. The profile always sets workplace_only, overriding extra vars.
+Explicit --exclude options override inventory category exclusions.
+EOF
+}
+fail() { printf 'bootstrap: %s\n' "$*" >&2; exit 2; }
+
+if [ "$#" -eq 0 ]; then usage >&2; exit 2; fi
+case "$1" in
+    -h|--help) usage; exit 0 ;;
+    personal) workplace=false ;;
+    workplace) workplace=true ;;
+    *) fail "Expected personal or workplace; use --help." ;;
+esac
+shift
+playbook=site.yml
+ask_password=true
+options=()
+excluded=''
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --check|--diff) options+=("$1"); shift ;;
+        --apps-only|--terminal-only)
+            [ "$playbook" = site.yml ] || fail 'Choose only one of --apps-only and --terminal-only.'
+            if [ "$1" = --apps-only ]; then playbook=applications.yml; else playbook=terminal.yml; fi
+            shift ;;
+        --exclude)
+            [ "$#" -ge 2 ] || fail '--exclude requires a category.'
+            case "$2" in ''|*[!a-zA-Z0-9_-]*) fail 'Category names may contain only letters, numbers, underscores, and hyphens.' ;; esac
+            if [ -n "$excluded" ]; then excluded+=','; fi
+            excluded+="\"$2\""
+            shift 2 ;;
+        --no-ask-become-pass) ask_password=false; shift ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; options+=("$@"); break ;;
+        *) fail "Unknown option: $1. Pass Ansible options after --." ;;
+    esac
+done
+case "$(uname -s)" in Darwin|Linux) ;; *) fail 'Only macOS and Linux are supported.' ;; esac
+command -v ansible-playbook >/dev/null 2>&1 || fail 'ansible-playbook is missing. Install Ansible Core or activate its virtual environment; see README.md.'
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cd -- "$repo_dir"
+# Explicit config also works when invoked from another directory or with an
+# unrelated ANSIBLE_CONFIG inherited from the caller.
+export ANSIBLE_CONFIG="$repo_dir/ansible.cfg"
+if [ "$ask_password" = true ] && [ "$playbook" != terminal.yml ]; then
+    options+=(--ask-become-pass)
+fi
+if [ -n "$excluded" ]; then
+    options+=(-e "{\"applications_excluded_categories\":[$excluded]}")
+fi
+options+=(-e "{\"workplace_only\":$workplace}")
+exec ansible-playbook "$playbook" "${options[@]}"
