@@ -39,7 +39,7 @@ play.write_text('''- hosts: workstations
 bin_dir = root / 'bin'
 bin_dir.mkdir()
 fixture = bin_dir / 'fixture'
-fixture.write_text('#!' + sys.executable + '\n' + r'''import json, os, pathlib, sys
+fixture.write_text('#!' + sys.executable + '\n' + r'''import json, os, pathlib, shutil, sys
 root = pathlib.Path(os.environ['EDITOR_FIXTURE'])
 root.mkdir(parents=True, exist_ok=True)
 name, args = pathlib.Path(sys.argv[0]).name, sys.argv[1:]
@@ -47,9 +47,9 @@ with (root / 'calls').open('a') as log: log.write(json.dumps([name] + args) + '\
 state = root / 'installed'
 if name == 'brew':
     if args[:2] == ['list', '--cask']:
-        if state.exists(): print('zed')
+        if state.exists(): print(state.read_text())
     elif args[:2] == ['list', '--formula']: pass
-    elif args == ['install', '--cask', 'zed']: state.touch()
+    elif args[:2] == ['install', '--cask']: state.write_text(args[2])
     else: raise AssertionError(args)
 elif name in ['dpkg-query', 'rpm']:
     if not state.exists(): sys.exit(1)
@@ -60,6 +60,8 @@ elif name in ['fixture-apt', 'dnf', 'dnf5', 'yum', 'zypper']:
     state.touch()
 elif name == 'fixture-key':
     assert args == ['https://packages.microsoft.com/keys/microsoft.asc']
+elif name == 'ditto':
+    shutil.copytree(args[0], args[1])
 elif name == 'hdiutil':
     if args[0] == 'attach':
         mount = pathlib.Path(args[args.index('-mountpoint') + 1])
@@ -73,7 +75,7 @@ elif name == 'hdiutil':
 else: raise AssertionError(name)
 ''')
 fixture.chmod(0o755)
-for command in ['brew', 'dpkg-query', 'rpm', 'fixture-apt', 'fixture-key', 'dnf', 'dnf5', 'yum', 'zypper', 'hdiutil']:
+for command in ['brew', 'dpkg-query', 'rpm', 'fixture-apt', 'fixture-key', 'dnf', 'dnf5', 'yum', 'zypper', 'hdiutil', 'ditto']:
     (bin_dir / command).symlink_to(fixture)
 script = root / 'zed-install.sh'
 script.write_text('''#!/bin/sh
@@ -102,6 +104,14 @@ for platform, apps in catalog['editors'].items():
                     assert ('arm64' if arch == 'aarch64' else 'x64') in url
                     arches[arch] = download.as_uri()
         if platform == 'linux': app['paths'] = ['{{ applications_home }}/.local/zed.app/bin/zed'] if app['id'] == 'zed' else []
+
+typora = catalog['writing']['linux']['apps'][0]
+assert typora['workplace_permitted'] is False
+for arch, url in typora['urls']['deb'].items():
+    assert url.startswith('https://downloads.typora.io/linux/typora_')
+    assert url.endswith(('_arm64.deb' if arch == 'aarch64' else '_amd64.deb'))
+    typora['urls']['deb'][arch] = download.as_uri()
+typora['paths'] = []
 
 env = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'], ANSIBLE_LOCAL_TEMP=str(root / 'local'), ANSIBLE_REMOTE_TEMP=str(root / 'remote'))
 
@@ -166,4 +176,40 @@ assert 'changed=0' in run('excluded', v)
 v['applications_excluded_categories'] = []
 v['ansible_facts']['os_family'] = 'Archlinux'
 run('unsupported-distro', v, True, expected=2)
+for category, cask, bundle in [('writing', 'typora', 'Typora.app'),
+                               ('security', 'little-snitch', 'Little Snitch.app')]:
+    v = variables('Darwin', cask)
+    v['applications_enabled_categories'] = [category]
+    v['applications_catalog'][category]['macos']['apps'] = [app for app in v['applications_catalog'][category]['macos']['apps'] if app['cask'] == cask]
+    assert catalog[category]['macos']['apps'][0]['workplace_permitted'] is False
+    assert 'changed=0' in run(cask + '-workplace', dict(v, workplace_only=True))
+    assert not (root / cask / 'state').exists()
+    assert 'changed=1' in run(cask + '-check', v, True)
+    assert not (root / cask / 'state/installed').exists()
+    run(cask + '-install', v)
+    assert (root / cask / 'state/installed').read_text() == cask
+    assert 'changed=0' in run(cask + '-repeat', v)
+    (root / cask / 'Applications' / bundle).mkdir(parents=True)
+    before = (root / cask / 'state/calls').read_text()
+    assert 'changed=0' in run(cask + '-existing-bundle', v)
+    assert (root / cask / 'state/calls').read_text() == before
+
+for arch in ['x86_64', 'aarch64']:
+    name = 'typora-' + arch
+    v = variables('Linux', name, arch=arch)
+    v['applications_enabled_categories'] = ['writing']
+    assert 'changed=0' in run(name + '-workplace', dict(v, workplace_only=True))
+    assert not (root / name / 'state').exists()
+    assert 'changed=1' in run(name + '-check', v, True)
+    assert not (root / name / 'state/installed').exists()
+    run(name + '-install', v)
+    assert (root / name / 'state/installed').exists()
+    assert 'changed=0' in run(name + '-repeat', v)
+    calls = (root / name / 'state/calls').read_text()
+    assert 'fixture-apt' in calls and 'fixture-key' not in calls
+
+v = variables('Linux', 'typora-rpm', 'RedHat', 'dnf')
+v['applications_enabled_categories'] = ['writing']
+assert 'has no configured rpm package' in run('typora-rpm', v, True, expected=2)
+assert all(app['id'] != 'little-snitch' for app in catalog['security']['linux']['apps'])
 print(f'Passed on {sys.platform}; disk mounts and native package managers simulated. Logs: {root}')

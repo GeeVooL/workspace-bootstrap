@@ -8,7 +8,7 @@
   loop: "{{ application.commands }}"
   register: application_commands
   changed_when: false
-  failed_when: application_commands.rc not in [0, 1]
+  failed_when: application_commands.rc not in [0, 1, 127]
   check_mode: false
 
 - name: Check known installation locations
@@ -16,7 +16,7 @@
     path: "{{ item }}"
   loop: >-
     {{ ((applications_macos_dirs + [applications_macos_install_dir]) | unique | map('regex_replace', '$', '/' + application.bundle) | list)
-       if ansible_facts.system == 'Darwin' else
+       if ansible_facts.system == 'Darwin' and application.bundle is defined else
        (application.paths | default([])) }}
   register: application_locations
 
@@ -37,8 +37,8 @@
     - not application_present
     - application.installer == 'homebrew'
 
-- name: Install missing application from its official distribution
+- name: Install missing application using the selected installer
   ansible.builtin.include_tasks: "{{ application.installer }}.yml"
   when:
-    - not application_present
-    - application.installer in ['dmg', 'native', 'script']
+    - not application_present or application.installer in ['flatpak', 'command_line_tools']
+    - application.installer in ['dmg', 'native', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools']

@@ -1,0 +1,35 @@
+---
+- name: Require macOS for App Store installation
+  ansible.builtin.assert:
+    that: ansible_facts.system == 'Darwin'
+
+- name: Preview App Store installation
+  ansible.builtin.debug:
+    msg: "Would install mas through Homebrew and {{ application.name }} from the App Store ({{ application.app_store_id }}). App Store sign-in is required."
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Install App Store application
+  when: not ansible_check_mode
+  block:
+    - name: Install the Mac App Store CLI
+      ansible.builtin.include_role:
+        name: homebrew
+      vars:
+        macos_homebrew_formulae: [mas]
+        macos_homebrew_casks: []
+
+    - name: Discover the Mac App Store CLI
+      ansible.builtin.shell: command -v mas
+      args:
+        executable: /bin/sh
+      environment:
+        PATH: "{{ (workstation_homebrew_executable | dirname) ~ ':' ~ applications_search_path }}"
+      register: application_mas
+      changed_when: false
+
+    - name: Install the App Store application
+      ansible.builtin.command:
+        argv: ["{{ application_mas.stdout }}", install, "{{ application.app_store_id }}"]
+      become: true
+      changed_when: true

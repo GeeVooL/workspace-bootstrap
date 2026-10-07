@@ -16,8 +16,32 @@ applications_catalog:
         - {name: tree, workplace_permitted: true}
         - {name: jq, workplace_permitted: true}
       casks: []
+      apps:
+        - name: Ghostty
+          workplace_permitted: true
+          id: ghostty
+          commands: [ghostty]
+          bundle: Ghostty.app
+          installer: homebrew
+          cask: ghostty
     linux:
       packages: []
+      apps:
+        - name: Ghostty
+          workplace_permitted: true
+          id: ghostty
+          commands: [ghostty]
+          paths:
+            - /usr/bin/ghostty
+            - /usr/local/bin/ghostty
+            - /snap/bin/ghostty
+            - /var/lib/snapd/snap/bin/ghostty
+          installer: snap_or_copr
+          snap: ghostty
+          package: ghostty
+          copr:
+            url: https://copr.fedorainfracloud.org/coprs/scottames/ghostty/repo/fedora-{release}/scottames-ghostty-fedora-{release}.repo
+            filename: workstation-scottames-ghostty.repo
   development:
     macos:
       casks:
@@ -77,5 +101,112 @@ applications_catalog:
             - /var/lib/flatpak/app/dev.zed.Zed
           installer: script
           url: https://zed.dev/install.sh
+
+  writing:
+    macos:
+      apps:
+        - name: Typora
+          workplace_permitted: false
+          id: typora
+          commands: [typora]
+          bundle: Typora.app
+          installer: homebrew
+          cask: typora
+    linux:
+      apps:
+        - name: Typora
+          workplace_permitted: false
+          id: typora
+          commands: [typora]
+          paths:
+            - /usr/share/typora/Typora
+            - "{{ applications_home }}/.local/share/flatpak/app/io.typora.Typora"
+            - /var/lib/flatpak/app/io.typora.Typora
+          installer: native
+          package: typora
+          urls:
+            deb:
+              x86_64: https://downloads.typora.io/linux/typora_1.14.9_amd64.deb
+              aarch64: https://downloads.typora.io/linux/typora_1.14.9_arm64.deb
+  security:
+    macos:
+      apps:
+        - name: Little Snitch
+          workplace_permitted: false
+          id: little-snitch
+          commands: []
+          bundle: Little Snitch.app
+          installer: homebrew
+          cask: little-snitch
+        - name: 1Password
+          workplace_permitted: false
+          id: 1password
+          commands: []
+          bundle: 1Password.app
+          installer: homebrew
+          cask: 1password
+    linux:
+      apps:
+        - name: 1Password
+          workplace_permitted: false
+          id: 1password
+          commands: [1password]
+          paths: [/usr/bin/1password]
+          installer: onepassword
+          package: 1password
+          urls:
+            deb:
+              x86_64: https://downloads.1password.com/linux/debian/amd64/stable/1password-latest.deb
+            rpm:
+              x86_64: https://downloads.1password.com/linux/rpm/stable/x86_64/1password-latest.rpm
+          signing_key: https://downloads.1password.com/linux/keys/1password.asc
+          signing_fingerprint: 3FEF9748469ADBE15DA7CA80AC2D62742012EA22
+          archive_url: https://downloads.1password.com/linux/tar/stable/aarch64/1password-latest.tar.gz
+  fonts:
+    macos:
+      casks:
+        - {name: font-jetbrains-mono, workplace_permitted: true}
+        - {name: font-jetbrains-mono-nerd-font, workplace_permitted: true}
+    linux:
+      apps:
+        - name: JetBrains Mono
+          id: jetbrains-mono
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_fonts_dir }}/jetbrains-mono/JetBrainsMono-Regular.ttf"]
+          installer: font_archive
+          url: https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+        - name: JetBrains Mono Nerd Font
+          id: jetbrains-mono-nerd-font
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_fonts_dir }}/jetbrains-mono-nerd-font/JetBrainsMonoNerdFont-Regular.ttf"]
+          installer: font_archive
+          url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
+  desktop:
+    linux:
+      apps:
+        - name: Flatpak and Flathub
+          id: flatpak
+          workplace_permitted: true
+          commands: [flatpak]
+          installer: flatpak
+          remote: flathub
+          remote_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+  apple_development:
+    macos:
+      apps:
+        - name: Apple Command Line Tools
+          id: command-line-tools
+          workplace_permitted: false
+          commands: []
+          installer: command_line_tools
+        - name: Xcode
+          id: xcode
+          workplace_permitted: false
+          commands: []
+          bundle: Xcode.app
+          installer: mas
+          app_store_id: '497799835'
 
 applications_excluded_categories: []

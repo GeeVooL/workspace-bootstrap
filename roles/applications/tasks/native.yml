@@ -4,11 +4,16 @@
     that:
       - ansible_facts.os_family in ['Debian', 'RedHat', 'Suse']
       - ansible_facts.os_family == 'Debian' or ansible_facts.pkg_mgr in ['dnf', 'dnf5', 'yum', 'zypper']
-    fail_msg: Official VS Code packages require Debian/Ubuntu (deb), Fedora/RHEL (rpm), or openSUSE/SLE (rpm).
+    fail_msg: "{{ application.name }} native installation requires Debian/Ubuntu (deb), Fedora/RHEL (rpm), or openSUSE/SLE (rpm)."
 
 - name: Select native package format
   ansible.builtin.set_fact:
     application_package_format: "{{ 'deb' if ansible_facts.os_family == 'Debian' else 'rpm' }}"
+
+- name: Require an available native package format
+  ansible.builtin.assert:
+    that: application_package_format in application.urls
+    fail_msg: "{{ application.name }} has no configured {{ application_package_format }} package. Available formats: {{ application.urls.keys() | join(', ') }}."
 
 - name: Check native package database
   ansible.builtin.command:
@@ -28,7 +33,7 @@
     - name: Require a supported package architecture
       ansible.builtin.assert:
         that: ansible_facts.architecture in application.urls[application_package_format]
-        fail_msg: Official VS Code package installation supports x86_64 and aarch64.
+        fail_msg: "{{ application.name }} has no configured {{ application_package_format }} package for {{ ansible_facts.architecture }}."
 
     - name: Preview native package installation
       ansible.builtin.debug:
@@ -58,7 +63,7 @@
           become: true
           when: application_package_format == 'deb'
 
-        - name: Trust official Microsoft RPM signing key
+        - name: Trust the application's RPM signing key
           ansible.builtin.rpm_key:
             key: "{{ application.signing_key }}"
             state: present

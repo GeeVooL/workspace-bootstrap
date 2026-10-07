@@ -41,6 +41,8 @@ env = dict(os.environ, ANSIBLE_REMOTE_TEMP=str(root / 'remote'))
 catalog = yaml.safe_load(Path('inventories/local/group_vars/workstations.yml').read_text())['applications_catalog']
 # The signed package installer has its own offline fixture suite.
 catalog['development']['macos']['apple_container'] = False
+# Ghostty installation has its own offline routing suite.
+catalog['utilities']['macos']['apps'] = []
 
 def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
     variables = dict(variables or {}, ansible_python_interpreter=python)

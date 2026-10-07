@@ -1,10 +1,11 @@
 # Workstation Bootstrap
 
 Ansible configuration for development workstations on macOS and Linux. The current
-setup installs VS Code and Zed on macOS and Linux, Fork and Apple container on
-supported Macs, and configures Fish, Starship, fzf, zoxide, and optional
+setup installs VS Code, Zed, Typora, 1Password, and fonts on macOS and supported Linux distributions,
+Fork, Little Snitch, and Apple container on supported Macs, and configures Fish, Starship, fzf, zoxide, and optional
 Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS.
-Linux prerequisites are still installed separately.
+Linux CLI prerequisites are still installed separately; Ghostty, Flatpak, and Flathub are managed.
+Xcode and Apple Command Line Tools are available on macOS.
 
 ## Structure
 
@@ -65,7 +66,7 @@ Linux editors use official installers and native packages as described below. Na
 installation is also implemented, but package names must be supplied for the target distribution.
 Linux package tasks use privilege escalation; pass `--ask-become-pass` if needed.
 The Homebrew role preserves main’s noninteractive bootstrap behavior. Linux
-repositories, Flatpak, and Snap are not managed yet.
+Flatpak and its per-user Flathub remote are managed in the `desktop` category. Ghostty can use existing Snap or a Fedora COPR repository.
 
 To bootstrap without an existing Homebrew installation, install Ansible into a
 Python virtual environment first:
@@ -126,8 +127,13 @@ it does not install applications. Homebrew tasks install only missing packages, 
 The local inventory's `group_vars/workstations.yml` defines the application catalog.
 All catalog categories are enabled by default. Currently `utilities` contains mise, fish, git, starship, fzf, zoxide, bat, fd,
 ripgrep, tree, and jq on macOS; `development` contains Fork and Apple container,
-and `editors` contains VS Code and Zed on both platforms. Apple container is skipped
-on Intel Macs and macOS versions below 26. Linux utilities remain unmanaged.
+and `editors` contains VS Code and Zed on both platforms. `writing` contains Typora
+on both platforms; `security` contains 1Password on both platforms and Little Snitch on macOS.
+`fonts` contains JetBrains Mono and JetBrains Mono Nerd Font on both platforms.
+`desktop` enables Flatpak and Flathub on Linux. `apple_development` contains Xcode
+and Apple Command Line Tools on macOS. Apple container is skipped
+on Intel Macs and macOS versions below 26. `utilities` also installs Ghostty on
+macOS and supported Linux setups. Linux CLI utilities remain unmanaged.
 Excluding a category skips installation;
 it does not uninstall existing applications.
 
@@ -160,7 +166,7 @@ false or missing approval is skipped before discovery, downloads, and installati
 Category selections and exclusions still apply. This filters application installation;
 it does not uninstall existing apps or change terminal configuration and Fisher plugins.
 
-The current catalog marks all apps except Fork as permitted, according to this
+The current catalog marks all apps except Fork, Typora, Little Snitch, 1Password, Xcode, and Apple Command Line Tools as permitted, according to this
 repository's workplace policy. These labels record approval, not a licensing determination.
 New apps require explicit approval to be included in workplace mode.
 
@@ -196,6 +202,87 @@ applications_catalog:
 Fill the lists with the packages you want; empty or omitted platform entries do
 nothing and require no package manager. Fork has no official Linux release.
 Catalog overrides replace the dictionary, so supply the complete desired catalog.
+
+### Ghostty installation
+
+Ghostty is part of `utilities` and is workplace-permitted. Existing installations
+are detected first and left in place. macOS uses the `ghostty` Homebrew cask.
+Linux uses the following order:
+
+1. If `snap` is installed, install `ghostty --classic` through Snap, including on Fedora.
+2. Without Snap, Fedora with `dnf` or `dnf5` uses the `scottames/ghostty` COPR
+   documented by [Ghostty](https://ghostty.org/docs/install/binary). The role
+   downloads its repository configuration and installs the native package.
+3. Other Linux systems without Snap fail with instructions to configure Snap or
+   install Ghostty manually. Snap itself is not bootstrapped.
+
+Snap service or installation failures are reported; they do not trigger COPR
+fallback. Fedora Atomic/rpm-ostree installation is not supported by this fallback.
+Package installation uses privilege escalation; pass `--ask-become-pass` if needed.
+Check mode previews installation without downloading repository files or installing
+packages. Installed packages are not upgraded by these tasks.
+
+`configure_ghostty` controls terminal configuration only; it does not control app
+installation. Use application-category selection to control installation.
+
+### 1Password, fonts, Flatpak, and Apple developer tools
+
+These categories are enabled by default; select a subset with, for example:
+
+```sh
+ansible-playbook applications.yml --ask-become-pass -e '{"applications_enabled_categories": ["security", "fonts", "desktop"]}'
+```
+
+- **1Password** (`security`, not workplace permitted): Homebrew cask on macOS.
+  Linux x86-64 uses official Debian or RPM packages; Linux ARM64 uses the official
+  archive, verifies its detached signature against the published signing fingerprint
+  in an isolated keyring, then runs the vendor integration script under `/opt/1Password`.
+  See [1Password's Linux installation instructions](https://support.1password.com/install-linux/).
+- **Fonts** (`fonts`, workplace permitted): JetBrains Mono and JetBrains Mono Nerd Font
+  use Homebrew casks on macOS. Linux extracts upstream archives into
+  `~/.local/share/fonts/<family>` and refreshes fontconfig. Override
+  `applications_fonts_dir` to change the destination. Existing fonts are preserved;
+  this does not select a font or alter Ghostty configuration. The plain font uses
+  [JetBrains Mono 2.304](https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304);
+  the patched family uses the latest [Nerd Fonts release](https://github.com/ryanoasis/nerd-fonts/releases/latest).
+- **Flatpak + Flathub** (`desktop`, Linux only, workplace permitted): installs the
+  distribution's `flatpak` package, adds the official Flathub remote for the current
+  user, and enables it if disabled. Existing remotes are preserved. This does not
+  automatically approve or install apps from Flathub.
+- **Xcode + Command Line Tools** (`apple_development`, macOS only, not workplace
+  permitted): checks the selected developer directory for a compiler. If missing,
+  requests [Apple's interactive installer](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools)
+  and stops with instructions to complete it and rerun. An existing Xcode toolchain
+  satisfies this check. Xcode is installed through Homebrew's `mas` CLI using App
+  Store ID `497799835`; sign into the App Store and obtain Xcode with your Apple
+  Account first, as required by [mas](https://github.com/mas-cli/mas). First-launch
+  setup and license acceptance remain interactive. The selected developer directory
+  is not changed.
+
+Homebrew itself requires Command Line Tools. On a fresh Mac, run only
+`apple_development` first, complete Apple's installer if prompted, and rerun before
+running the full catalog. Workplace filtering skips the explicit Apple tools entries;
+it does not remove Homebrew's prerequisites or tools already installed.
+
+### Typora and Little Snitch
+
+Typora (`writing`) and Little Snitch (`security`) are enabled in normal mode and
+excluded by `workplace_only=true`. Both use Homebrew casks on macOS:
+[Typora](https://formulae.brew.sh/cask/typora) and
+[Little Snitch](https://formulae.brew.sh/cask/little-snitch).
+Existing application bundles are preserved. Little Snitch's first-run setup,
+system-extension approval, and licensing remain manual.
+
+On Linux, Typora uses the official 1.14.9 `.deb` downloads linked by its
+[download page](https://typora.io/) for x86_64 and aarch64. Debian/Ubuntu are
+supported; other distributions fail with an explicit package-format error.
+The native package manager installs dependencies. This does not add Typora's
+APT repository or update an existing installation; change the catalog URLs for
+future fresh-install versions. Little Snitch has no Linux catalog entry.
+
+```sh
+ansible-playbook applications.yml -e '{"applications_enabled_categories": ["writing", "security"]}'
+```
 
 ### Editors
 
@@ -507,7 +594,7 @@ package installation and real Homebrew downloads have not been tested.
 - Additional application categories for macOS and Linux
 - Editor configuration
 - Development runtimes and toolchains
-- Fonts, themes, and operating-system settings
+- Additional fonts, themes, and operating-system settings
 
 Run `python3 tests/check-shell-paths.py /path/to/ansible-playbook` to validate
 Fish, Bash, and Zsh startup behavior with temporary homes. The integration suite
@@ -534,8 +621,23 @@ exclusion, check mode, and zero changes on repeat. The suite runs copied roles
 with local download fixtures, simulated disk mounts and package managers, and
 substitutes privileged apt/key modules in that copy. Actual Linux package
 installation, GUI launches, and upstream downloads are not tested by this suite.
+It also covers Typora and Little Snitch installation routes and workplace exclusions.
+
+Run `python3 tests/check-ghostty.py` for offline Ghostty routing checks. Fake Snap,
+DNF, RPM, and Homebrew commands verify source selection, existing installations,
+check mode, failures without fallback, exclusions, and repeat-run idempotence.
+Fedora facts are simulated; this suite does not exercise a real Snap daemon or COPR installation.
 
 Run `python3 tests/check-workplace.py` for workplace-selection regression checks.
 It replaces installer entry points with recording fixtures and tests approval
 labels, legacy entries, category exclusions, check mode, invalid flag values,
 and repeat-run idempotence. It installs no applications.
+
+Run `python3 tests/check-platform-apps.py` for offline fonts, Flatpak/Flathub,
+1Password, and Apple developer tool checks. It checks workplace filtering, check
+mode, archive extraction, disabled remote repair, signature rejection, interactive
+CLT handling, and zero changes on repeat. Package managers, signature verification,
+and Apple services are simulated; no production apps are installed.
+This suite has passed on macOS (Ansible Core 2.15.13) and Debian ARM64 in an
+Apple Container (Ansible Core 2.19.11). ARM archive extraction is tested on Linux;
+App Store, Homebrew, Flatpak, and native package installation remain fixture-based.

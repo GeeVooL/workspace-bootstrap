@@ -1,0 +1,77 @@
+---
+- name: Require Linux for user font archives
+  ansible.builtin.assert:
+    that: ansible_facts.system == 'Linux'
+
+- name: Preview font installation
+  ansible.builtin.debug:
+    msg: "Would install {{ application.name }} under {{ applications_fonts_dir }}."
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Install fonts for the current user
+  when: not ansible_check_mode
+  block:
+    - name: Install font extraction and cache prerequisites
+      ansible.builtin.package:
+        name: [unzip, fontconfig]
+        state: present
+      become: true
+
+    - name: Create temporary font download directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: -fonts
+      register: application_fonts_temp
+
+    - name: Download font archive
+      ansible.builtin.get_url:
+        url: "{{ application.url }}"
+        dest: "{{ application_fonts_temp.path }}/fonts.zip"
+        mode: '0600'
+
+    - name: Extract font archive
+      ansible.builtin.unarchive:
+        src: "{{ application_fonts_temp.path }}/fonts.zip"
+        dest: "{{ application_fonts_temp.path }}"
+        remote_src: true
+
+    - name: Find font files
+      ansible.builtin.find:
+        paths: "{{ application_fonts_temp.path }}"
+        patterns: ['*.ttf', '*.otf']
+        recurse: true
+      register: application_font_files
+
+    - name: Require font files in the archive
+      ansible.builtin.assert:
+        that: application_font_files.matched > 0
+
+    - name: Create the font family directory
+      ansible.builtin.file:
+        path: "{{ applications_fonts_dir }}/{{ application.id }}"
+        state: directory
+        mode: '0755'
+
+    - name: Install font files
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ applications_fonts_dir }}/{{ application.id }}/{{ item.path | basename }}"
+        remote_src: true
+        mode: '0644'
+        backup: true
+      loop: "{{ application_font_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Refresh the font cache
+      ansible.builtin.command:
+        argv: [fc-cache, -f, "{{ applications_fonts_dir }}/{{ application.id }}"]
+      changed_when: true
+
+  always:
+    - name: Remove temporary font downloads
+      ansible.builtin.file:
+        path: "{{ application_fonts_temp.path }}"
+        state: absent
+      when: application_fonts_temp.path is defined

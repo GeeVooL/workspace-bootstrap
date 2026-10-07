@@ -1,0 +1,40 @@
+---
+- name: Require macOS for Apple Command Line Tools
+  ansible.builtin.assert:
+    that: ansible_facts.system == 'Darwin'
+
+- name: Read the selected developer directory
+  ansible.builtin.command:
+    argv: ["{{ applications_xcode_select }}", -p]
+  register: application_developer_dir
+  changed_when: false
+  failed_when: application_developer_dir.rc not in [0, 2]
+  check_mode: false
+
+- name: Check the selected compiler
+  ansible.builtin.stat:
+    path: "{{ application_developer_dir.stdout }}/usr/bin/clang"
+  register: application_developer_compiler
+  when: application_developer_dir.rc == 0
+
+- name: Request missing Apple Command Line Tools
+  when: not (application_developer_compiler.stat.exists | default(false))
+  block:
+    - name: Preview the interactive Apple installer
+      ansible.builtin.debug:
+        msg: Would request Apple's Command Line Tools installer; complete its dialog and rerun.
+      changed_when: true
+      when: ansible_check_mode
+
+    - name: Request Apple's interactive Command Line Tools installer
+      ansible.builtin.command:
+        argv: ["{{ applications_xcode_select }}", --install]
+      register: application_clt_request
+      changed_when: application_clt_request.rc == 0
+      failed_when: false
+      when: not ansible_check_mode
+
+    - name: Require completion of the Apple installer before continuing
+      ansible.builtin.fail:
+        msg: "Complete Apple's Command Line Tools installer, then rerun the playbook. {{ application_clt_request.stderr | default('') }}"
+      when: not ansible_check_mode

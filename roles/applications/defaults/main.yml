@@ -9,3 +9,7 @@ applications_bin_dir: "{{ applications_home }}/.local/bin"
 applications_search_path: "{{ applications_bin_dir }}:{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
 applications_macos_dirs: ["/Applications", "{{ applications_home }}/Applications"]
 applications_macos_install_dir: /Applications
+applications_copr_repo_dir: /etc/yum.repos.d
+applications_fonts_dir: "{{ applications_home }}/.local/share/fonts"
+applications_onepassword_dir: /opt/1Password
+applications_xcode_select: /usr/bin/xcode-select
