@@ -266,10 +266,10 @@ Linux after installing utilities through the platform's package manager:
 ansible-playbook shell-paths.yml
 ```
 
-It adds `~/.local/bin` and the detected Homebrew prefix's `bin` and `sbin`
-directories to PATH. Without Homebrew, it uses standard platform locations
-(`/opt/homebrew/bin` and `/usr/local/bin` on macOS; `/home/linuxbrew/.linuxbrew/bin`
-and `/usr/local/bin` on Linux). Nonexistent directories are ignored. Additional
+It adds `~/.local/bin` to PATH. On macOS, it also adds the detected Homebrew
+prefix's `bin` and `sbin` directories, falling back to `/opt/homebrew/bin` and
+`/usr/local/bin` when Homebrew is absent. Linux adds `/usr/local/bin` and does
+not discover or manage Homebrew. Nonexistent directories are ignored. Additional
 installation directories can be supplied using `shell_extra_bin_paths`.
 Existing PATH entries are retained without adding duplicates.
 

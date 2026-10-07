@@ -45,6 +45,13 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
     }
     env = dict(os.environ, ANSIBLE_HOME=str(root/'ansible'),
                ANSIBLE_LOCAL_TEMP=str(root/'local'), ANSIBLE_REMOTE_TEMP=str(root/'remote'))
+    if sys.platform == 'linux':
+        # Even an existing Linuxbrew installation must not be queried.
+        probe = root/'brew-probe'
+        probe.mkdir()
+        (probe/'brew').write_text('#!/bin/sh\ntouch ' + shlex.quote(str(root/'brew-called')) + '\nexit 1\n')
+        (probe/'brew').chmod(0o755)
+        env['PATH'] = str(probe) + os.pathsep + env['PATH']
 
     def deploy(*flags):
         result = subprocess.run(
@@ -59,6 +66,7 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
         assert path.read_text() == content
     deploy()
     assert 'changed=0' in deploy(), 'Second application was not idempotent'
+    assert not (root/'brew-called').exists(), 'Linux must not query Homebrew'
     for path, content in originals.items():
         assert path.read_text().endswith(content), path
     assert not (home/'.bash_profile').exists(), 'Existing login file was shadowed'

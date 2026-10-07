@@ -3,4 +3,4 @@ shell_home: "{{ ansible_facts.user_dir }}"
 terminal_config_root: "{{ ansible_facts.env.XDG_CONFIG_HOME | default(shell_home ~ '/.config', true) }}"
 shell_zdotdir: "{{ ansible_facts.env.ZDOTDIR | default(shell_home, true) }}"
 shell_extra_bin_paths: []
-shell_standard_bin_paths: "{{ ['/opt/homebrew/bin', '/usr/local/bin'] if ansible_facts.system == 'Darwin' else ['/home/linuxbrew/.linuxbrew/bin', '/usr/local/bin'] }}"
+shell_standard_bin_paths: "{{ ['/opt/homebrew/bin', '/usr/local/bin'] if ansible_facts.system == 'Darwin' else ['/usr/local/bin'] }}"

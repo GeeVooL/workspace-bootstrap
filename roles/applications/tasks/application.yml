@@ -33,6 +33,7 @@
     macos_homebrew_formulae: []
     macos_homebrew_casks: "{{ [application.cask] }}"
   when:
+    - ansible_facts.system == 'Darwin'
     - not application_present
     - application.installer == 'homebrew'
 
