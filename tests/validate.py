@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import shutil
 import sys
+from fisher_fixture import seed_plugins
 
 assert sys.platform == 'darwin', 'This fixture suite currently requires macOS.'
 os.chdir(Path(__file__).resolve().parents[1])
@@ -69,7 +70,7 @@ assert 'changed=0' in run('linux-empty-catalog', 'applications.yml', dict(variab
 
 config = root / 'config' / 'fish'
 config.mkdir(parents=True)
-(config / 'fish_plugins').write_text(Path('roles/terminal/files/fisher/fish_plugins').read_text())
+seed_plugins(config)
 ghostty = root / 'ghostty' / 'config.ghostty'
 ghostty.parent.mkdir()
 original = 'font-size = 14\ntheme = existing\nkeybind = ctrl+a=new_tab\ncommand = /bin/zsh\n'
@@ -105,7 +106,7 @@ assert not (root / 'unselected-config').exists()
 assert not (root / 'unselected-ghostty').exists()
 other_config = root / 'unselected-config' / 'fish'
 other_config.mkdir(parents=True)
-(other_config / 'fish_plugins').write_text(Path('roles/terminal/files/fisher/fish_plugins').read_text())
+seed_plugins(other_config)
 run('ghostty-disabled', 'terminal.yml', dict(isolated, configure_ghostty=False))
 assert not (root / 'unselected-ghostty').exists()
 

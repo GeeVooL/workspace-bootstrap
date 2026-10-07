@@ -105,20 +105,23 @@
         state: absent
       when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
 
-    - name: Inspect the installed Fisher manifest
-      ansible.builtin.stat:
-        path: "{{ terminal_config_root }}/fish/fish_plugins"
-      register: fisher_manifest
+    - name: Inspect required Fisher plugin metadata and files
+      ansible.builtin.command:
+        argv:
+          - "{{ fish_executable }}"
+          - "{{ role_path }}/files/fisher/install.fish"
+          - check
+          - '-'
+          - "{{ role_path }}/files/fisher/fish_plugins"
+      environment:
+        XDG_CONFIG_HOME: "{{ terminal_config_root }}"
+      register: fisher_health
+      changed_when: false
+      check_mode: false
 
-    - name: Read the installed Fisher manifest
-      ansible.builtin.slurp:
-        src: "{{ terminal_config_root }}/fish/fish_plugins"
-      register: fisher_manifest_content
-      when: fisher_manifest.stat.exists
-
-    - name: Identify missing Fisher plugins
+    - name: Identify Fisher plugins needing installation or repair
       ansible.builtin.set_fact:
-        missing_plugins: "{{ lookup('file', role_path ~ '/files/fisher/fish_plugins').splitlines() | difference((fisher_manifest_content.content | default('') | b64decode).splitlines()) }}"
+        missing_plugins: "{{ lookup('file', role_path ~ '/files/fisher/fish_plugins').splitlines() | intersect(fisher_health.stdout_lines) }}"
 
     - name: Install missing Fisher plugins
       when: missing_plugins | length > 0

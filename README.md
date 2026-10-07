@@ -248,12 +248,18 @@ The required plugin list lives in `roles/terminal/files/fisher/fish_plugins`:
 - [fzf.fish](https://github.com/PatrickF1/fzf.fish)
 
 Ansible downloads a Fisher bootstrap function from the `4.4.8` release tag and installs
-missing plugins. Plugin versions follow their upstream defaults at first install;
-existing installations are not automatically upgraded. Additional Fisher plugins
+missing plugins. It checks required manifest entries, Fisher's universal metadata,
+and every file recorded for each required plugin. Incomplete required plugins are
+reinstalled; healthy plugins are left untouched. Installation and repair fetch the
+plugin's configured upstream reference, so a repair can also update that plugin.
+Additional Fisher plugins
 are preserved. Fisher maintains the installed list in `fish/fish_plugins`, plugin
 files in `fish/functions`, `fish/completions`, and `fish/conf.d`, and installation
 metadata in Fish's universal variables. These generated files are not committed.
 The bootstrap function is cached under `fish/.bootstrap`.
+Set `fisher_bootstrap_url` to use a trusted bootstrap mirror (the default is the
+version-tagged upstream function). Missing metadata with surviving, untracked files can
+produce Fisher's file-conflict error; these files are not deleted automatically.
 
 Add a plugin interactively with `fisher install owner/repository`, or add it to the
 repository's required list to install it on subsequent playbook runs. Removing a
@@ -378,6 +384,10 @@ package installation and real Homebrew downloads have not been tested.
 
 Run `python3 tests/check-shell-paths.py /path/to/ansible-playbook` to validate
 Fish, Bash, and Zsh startup behavior with temporary homes. The integration suite
-seeds the required Fisher manifest to avoid downloads; it does not exercise real
+seeds healthy Fisher metadata and placeholder files to avoid downloads; it does not exercise real
 plugin downloads or Homebrew bootstrapping. On a fresh machine, check mode can
 report missing terminal tools that the preceding application play would install.
+
+Run `python3 tests/check-fisher-repair.py` for offline repair regression checks.
+These use a local bootstrap fixture to verify manifest-only recovery, missing-file
+repair, failure detection, preservation of extra plugins, check mode, and idempotence.
