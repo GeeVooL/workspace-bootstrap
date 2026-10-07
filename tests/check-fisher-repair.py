@@ -19,8 +19,10 @@ env = dict(os.environ, XDG_CONFIG_HOME=str(config.parent),
 required = repo / 'roles/terminal/files/fisher/fish_plugins'
 installer = repo / 'roles/terminal/files/fisher/install.fish'
 plugins = required.read_text().splitlines()
-# Deliberately restore only the manifest for required plugins.
-(config / 'fish_plugins').write_text(required.read_text() + 'example/extra\n')
+# Deliberately restore only the manifest, using the upstream owner's casing.
+# Fisher normalizes metadata but preserves existing manifest capitalization.
+(config / 'fish_plugins').write_text(
+    required.read_text().replace('patrickf1/', 'PatrickF1/') + 'example/extra\n')
 subprocess.run([fish, '-c', '''
     set -U _fisher_plugins example/extra
     set -U _fisher_example_2F_extra_files $argv[1]
@@ -42,7 +44,7 @@ bootstrap.write_text('''function fisher
         set -U _fisher_{$key}_files $files
         contains -- $plugin $_fisher_plugins; or set -Ua _fisher_plugins $plugin
     end
-    printf '%s\\n' $_fisher_plugins > $__fish_config_dir/fish_plugins
+    printf '%s\\n' $_fisher_plugins | string replace 'patrickf1/' 'PatrickF1/' > $__fish_config_dir/fish_plugins
 end
 ''')
 variables = {
@@ -76,7 +78,12 @@ assert (config / 'fish_plugins').read_bytes() == manifest_before
 deploy('manifest-only-repair')
 assert pending() == []
 assert (config / 'repairs.log').read_text().splitlines() == plugins
+assert 'PatrickF1/fzf.fish' in (config / 'fish_plugins').read_text()
+healthy_manifest = (config / 'fish_plugins').read_bytes()
+healthy_repairs = (config / 'repairs.log').read_bytes()
 assert 'changed=0' in deploy('repeat')
+assert (config / 'fish_plugins').read_bytes() == healthy_manifest
+assert (config / 'repairs.log').read_bytes() == healthy_repairs
 # Removing a secondary tracked file must trigger repair too.
 tracked = list((config / 'completions').glob('*fzf*'))[0]
 tracked.unlink()

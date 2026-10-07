@@ -249,7 +249,8 @@ The required plugin list lives in `roles/terminal/files/fisher/fish_plugins`:
 
 Ansible downloads a Fisher bootstrap function from the `4.4.8` release tag and installs
 missing plugins. It checks required manifest entries, Fisher's universal metadata,
-and every file recorded for each required plugin. Incomplete required plugins are
+and every file recorded for each required plugin. Manifest matching ignores
+capitalization, preserving Fisher's existing plugin spelling. Incomplete required plugins are
 reinstalled; healthy plugins are left untouched. Installation and repair fetch the
 plugin's configured upstream reference, so a repair can also update that plugin.
 Additional Fisher plugins

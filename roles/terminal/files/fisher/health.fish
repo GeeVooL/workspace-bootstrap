@@ -2,7 +2,8 @@
 function workstation_pending_plugins --argument-names required_file
     set -l manifest
     if test -f $__fish_config_dir/fish_plugins
-        set manifest (string match -rv '^\s*(#|$)' < $__fish_config_dir/fish_plugins)
+        # Fisher preserves manifest casing but uses lowercase repository metadata.
+        set manifest (string match -rv '^\s*(#|$)' < $__fish_config_dir/fish_plugins | string lower)
     end
     for plugin in (string match -rv '^\s*(#|$)' < $required_file)
         set -l files_var _fisher_(string escape --style=var -- $plugin)_files
