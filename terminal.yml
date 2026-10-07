@@ -35,6 +35,10 @@
         - starship
         - fzf
         - zoxide
+        - fd
+        - bat
+        - curl
+        - tar
       register: terminal_tools
       changed_when: false
       failed_when: false
@@ -55,18 +59,25 @@
         fish_executable: "{{ terminal_tools.results[0].stdout }}"
         fzf_executable: "{{ terminal_tools.results[3].stdout }}"
 
-    - name: Check installed fzf supports Fish integration
+    - name: Read tool versions
       ansible.builtin.command:
-        argv: ["{{ fzf_executable }}", --fish]
-      register: fzf_integration
+        argv: ["{{ item.path }}", --version]
+      loop:
+        - { name: fish, path: "{{ fish_executable }}", minimum: '4.0.0' }
+        - { name: fzf, path: "{{ fzf_executable }}", minimum: '0.33.0' }
+        - { name: fd, path: "{{ terminal_tools.results[5].stdout }}", minimum: '8.5.0' }
+        - { name: bat, path: "{{ terminal_tools.results[6].stdout }}", minimum: '0.16.0' }
+      register: terminal_versions
       changed_when: false
       check_mode: false
-      failed_when: false
 
-    - name: Require a compatible fzf version
+    - name: Require versions supported by fzf.fish
       ansible.builtin.assert:
-        that: fzf_integration.rc == 0
-        fail_msg: Upgrade fzf to a version supporting 'fzf --fish' (0.48 or later).
+        that: (item.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) is version(item.item.minimum, '>=')
+        fail_msg: "Upgrade {{ item.item.name }} to {{ item.item.minimum }} or later."
+      loop: "{{ terminal_versions.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
 
   tasks:
     - name: Create Fish configuration directory
@@ -84,9 +95,80 @@
         validate: "{{ fish_executable }} --no-execute %s"
       loop:
         - git-abbreviations.fish
+        - mise.fish
         - starship.fish
-        - fzf.fish
+        - fzf-options.fish
         - zoxide.fish
+
+    - name: Inspect the previous fzf snippet
+      ansible.builtin.stat:
+        path: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
+        checksum_algorithm: sha256
+      register: previous_fzf
+
+    - name: Back up the previous managed fzf integration
+      ansible.builtin.copy:
+        src: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
+        dest: "{{ terminal_config_root }}/fish/conf.d/fzf.fish.{{ ansible_facts.date_time.iso8601_basic_short }}.bak"
+        remote_src: true
+        mode: '0600'
+      when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', 'files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
+
+    - name: Remove the previous managed fzf integration
+      ansible.builtin.file:
+        path: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
+        state: absent
+      when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', 'files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
+
+    - name: Inspect the installed Fisher manifest
+      ansible.builtin.stat:
+        path: "{{ terminal_config_root }}/fish/fish_plugins"
+      register: fisher_manifest
+
+    - name: Read the installed Fisher manifest
+      ansible.builtin.slurp:
+        src: "{{ terminal_config_root }}/fish/fish_plugins"
+      register: fisher_manifest_content
+      when: fisher_manifest.stat.exists
+
+    - name: Identify missing Fisher plugins
+      ansible.builtin.set_fact:
+        missing_plugins: "{{ lookup('file', 'files/fisher/fish_plugins').splitlines() | difference((fisher_manifest_content.content | default('') | b64decode).splitlines()) }}"
+
+    - name: Install missing Fisher plugins
+      when: missing_plugins | length > 0
+      block:
+        - name: Create Fisher bootstrap directory
+          ansible.builtin.file:
+            path: "{{ terminal_config_root }}/fish/.bootstrap"
+            state: directory
+            mode: '0700'
+
+        - name: Download the reviewed Fisher bootstrap function
+          ansible.builtin.get_url:
+            url: https://raw.githubusercontent.com/jorgebucaran/fisher/791da644d33d392216f6b1a9b5fc1e470db6d7f2/functions/fisher.fish
+            dest: "{{ terminal_config_root }}/fish/.bootstrap/fisher.fish"
+            mode: '0600'
+          when: not ansible_check_mode
+
+        - name: Install required plugins while preserving additional plugins
+          ansible.builtin.command:
+            argv:
+              - "{{ fish_executable }}"
+              - "{{ playbook_dir }}/files/fisher/install.fish"
+              - apply
+              - "{{ terminal_config_root }}/fish/.bootstrap/fisher.fish"
+              - "{{ playbook_dir }}/files/fisher/fish_plugins"
+          environment:
+            XDG_CONFIG_HOME: "{{ terminal_config_root }}"
+          changed_when: true
+          when: not ansible_check_mode
+
+        - name: Report pending plugin installation in check mode
+          ansible.builtin.debug:
+            msg: "Would install: {{ missing_plugins | join(', ') }}"
+          changed_when: true
+          when: ansible_check_mode
 
     - name: Create Ghostty configuration directory
       ansible.builtin.file:

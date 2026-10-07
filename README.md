@@ -12,8 +12,10 @@ development runtimes, and OS-specific settings for a fresh machine.
 | --- | --- |
 | Fish | Git abbreviations covering status, diffs, commits, branches, history, and synchronization |
 | Starship | Prompt initialization; existing styling is preserved |
-| fzf | Fish integration with a compact, bordered picker |
+| Fisher | Installs required Fish plugins while preserving additional plugins |
+| fzf.fish | File, Git, history, process, and variable pickers with previews |
 | zoxide | Directory tracking and `z` / `zi` shortcuts |
+| mise | Interactive Fish activation when installed on `PATH` or in `~/.local/bin` |
 | Ghostty | Launches Fish; optional |
 
 `terminal.yml` runs locally as the current user. It sets up executable paths and
@@ -70,26 +72,27 @@ The package playbook also runs `shell-paths.yml`, making the installed utilities
 available in new Fish, Bash, and Zsh sessions. It leaves the login shell unchanged
 and does not install language runtimes through mise. Run `terminal.yml` for Fish
 prompt, navigation, and fzf integrations.
-To enable mise in interactive Fish sessions, add `mise activate fish | source`
-inside an interactive guard in your Fish configuration, following the
-[mise activation instructions](https://mise.jdx.dev/getting-started.html).
+`terminal.yml` also activates mise automatically in interactive Fish when it is
+installed. No additional manual activation line is needed.
 
 ## Requirements
 
 - macOS or Linux
 - Ansible Core
-- Fish, Git, Starship, fzf 0.48 or later, and zoxide on `PATH`
+- Fish 4.0+, fzf 0.33+, fd 8.5+, and bat 0.16+ on `PATH`
+- Git, Starship, zoxide, curl, and tar on `PATH`
+- Internet access to GitHub when installing missing plugins
 - Ghostty, when using the Ghostty configuration task
 
-No additional Ansible collections are required. Recent Fish and fzf releases are
-recommended; available bindings, including Shift-Tab completion, depend on the
-installed fzf version.
+No additional Ansible collections are required. On Linux, some distributions name
+`fd` and `bat` executables `fdfind` and `batcat`; provide `fd` and `bat` on `PATH`
+before running the playbook.
 
 On macOS, use `macos.yml` above, or install the terminal prerequisites manually
 with Homebrew:
 
 ```sh
-brew install ansible fish git starship fzf zoxide
+brew install ansible fish git starship fzf fd bat zoxide
 brew install --cask ghostty
 ```
 
@@ -138,9 +141,14 @@ templates/
 files/
   fish/
     git-abbreviations.fish
+    mise.fish
     starship.fish
-    fzf.fish
+    fzf-options.fish
     zoxide.fish
+  fisher/
+    fish_plugins
+    install.fish
+    legacy-fzf.fish
 ```
 
 Edit Fish configuration in `files/fish/`. The playbook copies these files to the
@@ -185,8 +193,9 @@ to `~/.config/fish/conf.d`:
 
 - `00-workstation-path.fish` (generated PATH setup)
 - `git-abbreviations.fish`
+- `mise.fish`
 - `starship.fish`
-- `fzf.fish`
+- `fzf-options.fish`
 - `zoxide.fish`
 
 Existing files with those names are replaced when their contents differ. Ansible
@@ -213,6 +222,50 @@ configuration file for the existing setup.
 The playbook does not change the account's login shell or manage shell history,
 zoxide's database, or `starship.toml`. Starship uses its defaults when no separate
 prompt configuration exists.
+
+## Fish plugins
+
+The required plugin list lives in `files/fisher/fish_plugins`:
+
+- [Fisher](https://github.com/jorgebucaran/fisher)
+- [fzf.fish](https://github.com/PatrickF1/fzf.fish)
+
+Ansible downloads a Fisher bootstrap function from a fixed commit and installs
+missing plugins. Plugin versions follow their upstream defaults at first install;
+existing installations are not automatically upgraded. Additional Fisher plugins
+are preserved. Fisher maintains the installed list in `fish/fish_plugins`, plugin
+files in `fish/functions`, `fish/completions`, and `fish/conf.d`, and installation
+metadata in Fish's universal variables. These generated files are not committed.
+The bootstrap function is cached under `fish/.bootstrap`.
+
+Add a plugin interactively with `fisher install owner/repository`, or add it to the
+repository's required list to install it on subsequent playbook runs. Removing a
+line from that list does not uninstall it; use `fisher remove owner/repository`.
+Run `fisher update` explicitly to update installed plugins.
+
+The previous repository-managed `conf.d/fzf.fish` is backed up and removed only
+when its content matches the old snippet exactly. Fisher then installs its own
+`conf.d/fzf.fish`. Modified or unrelated files are preserved; a conflicting file
+can prevent installation and needs to be reconciled manually. Remove any separate
+`fzf --fish | source` initialization or other fzf plugins before using fzf.fish.
+
+Default fzf.fish bindings:
+
+| Binding | Search |
+| --- | --- |
+| Ctrl+Alt+F | Files and directories, with previews |
+| Ctrl+Alt+L | Git history, with commit diffs |
+| Ctrl+Alt+S | Git status, with file diffs |
+| Ctrl+R | Command history |
+| Ctrl+Alt+P | Processes |
+| Ctrl+V | Shell variables |
+
+Picker appearance remains in `files/fish/fzf-options.fish`. Plugin installation
+runs in noninteractive Fish with `XDG_CONFIG_HOME` set to
+`terminal_config_root`, so temporary deployments use isolated Fish configuration
+and Fisher metadata. Fish startup files should guard interactive-only commands
+with `status is-interactive`. Check mode reports missing plugins without downloading or
+installing them. No plugins are downloaded when opening a shell.
 
 ## Git shortcuts
 
@@ -265,6 +318,11 @@ For isolated validation, override `shell_home` and `shell_zdotdir` as well as
 `terminal_config_root` and `ghostty_config_path` so all startup files stay under
 temporary directories.
 
+The optional mise snippet also checks `~/.local/bin/mise`; activation makes mise
+and its selected tools available in interactive Fish sessions and updates tools
+when changing directories. `terminal.yml` does not install mise, and the snippet
+does nothing when it is absent; `macos.yml` installs it by default.
+
 ## Development
 
 Check playbook syntax:
@@ -276,9 +334,11 @@ ansible-playbook -i localhost, shell-paths.yml --syntax-check
 ```
 
 Fish snippets are syntax-checked before installation. The current playbook has
-been validated on macOS with Ansible Core 2.15.13, including check mode, application
-to a temporary configuration directory, and a second run with zero changes.
-Linux execution has not yet been validated.
+been validated on macOS with Ansible Core 2.15.13 and Fish 4.9.3, including a fresh
+check-mode run without configuration writes, migration in a temporary directory,
+persistent Fisher metadata, fzf bindings, preservation of an additional plugin,
+and a second apply with zero changes. Ghostty settings and the legacy fzf backup
+were also checked. Linux execution has not yet been validated.
 
 `macos.yml` has been validated on macOS with Ansible Core 2.15.13 using a
 temporary Homebrew stand-in: missing-package installation, optional casks,
