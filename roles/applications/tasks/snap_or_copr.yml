@@ -70,14 +70,20 @@
           ansible.builtin.file:
             path: "{{ applications_copr_repo_dir }}"
             state: directory
-            mode: '0755'
+
+        - name: Inspect existing COPR configuration
+          ansible.builtin.stat:
+            path: "{{ applications_copr_repo_dir }}/{{ application.copr.filename }}"
+            follow: false
+          register: application_copr_config
 
         - name: Enable the selected COPR repository
           ansible.builtin.get_url:
             url: "{{ application.copr.url | replace('{release}', ansible_facts.distribution_major_version | string) }}"
             dest: "{{ applications_copr_repo_dir }}/{{ application.copr.filename }}"
             mode: '0644'
-            backup: true
+            force: false
+          when: not application_copr_config.stat.exists
 
         - name: Install the missing native package
           ansible.builtin.command:

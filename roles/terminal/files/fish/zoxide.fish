@@ -1,3 +1,4 @@
+# Managed by Workstation Bootstrap.
 # Learn visited directories and enable z / zi shortcuts.
 if status is-interactive
     if command -q zoxide

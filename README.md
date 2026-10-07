@@ -32,6 +32,7 @@ roles/
       category.yml
       macos.yml
       linux.yml
+  managed_config/               # ownership checks and backed-up managed-file updates
   terminal/
     defaults/main.yml
     tasks/main.yml
@@ -262,7 +263,9 @@ the `snapd` snap, following [Snap's Debian instructions](https://snapcraft.io/do
 Fedora gets the `/snap` symlink needed for classic snaps, following
 [Snap's Fedora instructions](https://snapcraft.io/docs/tutorials/install-the-daemon/fedora/).
 An unrelated file, directory, or symlink at `/snap` is preserved and reported as an
-error. Existing services are repaired as needed; rerunning does not reinstall snaps.
+error. Service startup and the Debian `snapd` snap apply only to a newly installed
+package. Existing service enablement/running state is preserved; rerunning does
+not reinstall snaps or start an intentionally stopped daemon.
 
 This does not configure extra distribution repositories or bypass distro policies
 that disable Snap. Other distributions, non-systemd hosts, and OSTree systems need
@@ -308,6 +311,9 @@ ansible-playbook applications.yml --ask-become-pass -e '{"applications_enabled_c
   Linux x86-64 uses official Debian or RPM packages; Linux ARM64 uses the official
   archive, verifies its detached signature against the published signing fingerprint
   in an isolated keyring, then runs the vendor integration script under `/opt/1Password`.
+  The role supplies the standard desktop-menu directory required by the vendor script.
+  An incomplete-install marker permits retries of its own failed installations;
+  an existing unmarked installation directory is preserved.
   See [1Password's Linux installation instructions](https://support.1password.com/install-linux/).
 - **Fonts** (`fonts`, workplace permitted): JetBrains Mono and JetBrains Mono Nerd Font
   use Homebrew casks on macOS. Linux extracts upstream archives into
@@ -318,7 +324,7 @@ ansible-playbook applications.yml --ask-become-pass -e '{"applications_enabled_c
   the patched family uses the latest [Nerd Fonts release](https://github.com/ryanoasis/nerd-fonts/releases/latest).
 - **Flatpak + Flathub** (`desktop`, Linux only, workplace permitted): installs the
   distribution's `flatpak` package, adds the official Flathub remote for the current
-  user, and enables it if disabled. Existing remotes are preserved. This does not
+  user, and preserves existing remotes, including disabled ones. This does not
   automatically approve or install apps from Flathub.
 - **Xcode + Command Line Tools** (`apple_development`, macOS only, not workplace
   permitted): checks the selected developer directory for a compiler. If missing,
@@ -453,11 +459,18 @@ tasks requesting privilege escalation; the password is not saved in this reposit
 Do not run the whole playbook with sudo. Check mode previews the change without
 downloading the package or requesting administrator access, so omit `-K` for previews.
 
-Before an upgrade, stop a running service with `container system stop`; the role
-fails with instructions instead of interrupting workloads. Temporary installer files
-are removed after success or failure. The role does not start services, download a
-Linux kernel, or create containers. After installation, run `container system start`
-as your normal user when ready. Avoid managing the same installation through Homebrew.
+The role uses Apple's documented signed-package installation method for both
+installation and upgrades. After verifying the download, it checks for active
+containers and refuses to interrupt them. For an idle running service, it runs
+`container system stop`, installs the package, and restores the service with
+`container system start --enable-kernel-install`, even after an installer failure.
+A previously stopped service stays stopped during an upgrade. Current/newer
+versions do not cause any service changes; downgrades are never automatic.
+
+Fresh installs start the service by default, including downloading the default
+Linux kernel if needed. Set `apple_container_start_after_install=false` to leave
+it stopped. No workload containers are created. Temporary installers are removed
+after success or failure. Avoid managing the same installation through Homebrew.
 
 Role defaults include `apple_container_release_url`, `apple_container_executable`,
 `apple_container_installer_executable`, `apple_container_pkgutil_executable`, and
@@ -508,26 +521,35 @@ to `~/.config/fish/conf.d`:
 - `fzf-options.fish`
 - `zoxide.fish`
 
-Existing files with those names are replaced when their contents differ. Ansible
-creates timestamped backups before content changes. Other Fish files, including
-`config.fish`, are preserved. Remove duplicate initialization of these tools from
-other configuration files before applying.
+Files beginning with `# Managed by Workstation Bootstrap.` receive updates with
+timestamped backups. Exact copies of the previous repository snippets are adopted
+and marked on the next run. Other existing contents and symlinks at those filenames
+are preserved and reported, so a filename collision does not overwrite user settings.
+The same ownership rule applies to the generated Fish and POSIX PATH files.
+Bash/Zsh startup edits replace only this repository's marked block and back up the
+file, preserving surrounding content. Existing directory modes are not changed.
+Other Fish files, including `config.fish`, remain untouched. Fisher continues to
+manage and repair the required plugin code using its tracked-file metadata.
 
-When enabled, the Ghostty task adds or updates its `command` setting with the
-detected Fish executable path. Fonts, themes, key bindings, and other settings
-are preserved. The configuration file is backed up before content changes.
-Managed configuration directories use mode `0700`; managed files use `0644`.
+When enabled, the Ghostty task checks all documented locations in load order:
 
-Default Ghostty configuration paths:
+1. `$XDG_CONFIG_HOME/ghostty/config.ghostty`
+2. `$XDG_CONFIG_HOME/ghostty/config`
+3. On macOS, `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`
+4. On macOS, `~/Library/Application Support/com.mitchellh.ghostty/config`
 
-| Platform | Path |
-| --- | --- |
-| macOS | `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty` |
-| Linux | `$XDG_CONFIG_HOME/ghostty/config.ghostty`, or `~/.config/ghostty/config.ghostty` |
+`XDG_CONFIG_HOME` defaults to `~/.config`; `terminal_config_root` overrides it for
+this deployment. If any loaded file defines `command` or `initial-command`, nothing
+is added. Files using `config-file` includes are also left alone because an included
+file may define the launch command. Otherwise the Fish command is appended to the
+last existing file, with a backup. If no file exists, the platform's `config.ghostty`
+is created (macOS-specific directory on macOS, XDG directory on Linux). Fonts,
+themes, key bindings, and existing file permissions are preserved.
 
-For a legacy `config` filename or a custom location, set `ghostty_config_path`.
-Other loaded Ghostty files can override the `command` setting; use the appropriate
-configuration file for the existing setup.
+`ghostty_config_path` explicitly selects a single custom file instead of discovery;
+this is also useful for isolated tests. `ghostty_config_paths` can supply a custom
+list in load order. Managed snippet files use mode `0644`; existing unmarked files
+retain their contents and permissions.
 
 The playbook does not change the account's login shell or manage shell history,
 zoxide's database, or `starship.toml`. Starship uses its defaults when no separate
@@ -618,7 +640,7 @@ Pass overrides with `-e` or an Ansible variables file.
 | --- | --- | --- |
 | `configure_ghostty` | `true` | Enable Ghostty configuration tasks |
 | `terminal_config_root` | `$XDG_CONFIG_HOME` or `~/.config` | Root for Fish configuration and the default Linux Ghostty path |
-| `ghostty_config_path` | Platform-specific path above | Ghostty file to update |
+| `ghostty_config_path` | Unset (discover all documented paths) | Optional single-file override |
 | `terminal_search_path` | Managed executable directories followed by current `PATH` | Tool discovery and task execution path |
 | `shell_home` | Current user's home | Home for Bash startup files and `.local/bin`; override for temporary validation |
 | `shell_zdotdir` | Exported `ZDOTDIR` or `shell_home` | Directory for Zsh startup files |
@@ -666,8 +688,8 @@ exclusions, tags, check mode, backups, and repeat-run idempotence. It leaves log
 the temporary directory printed at completion.
 
 Validated on macOS with Ansible Core 2.15.13 and Fish on the local Mac.
-Linux routing with an empty catalog is checked using simulated facts; native Linux
-package installation and real Homebrew downloads have not been tested.
+Linux routing fixtures use simulated facts. Real Homebrew downloads and host GUI
+installation are not exercised.
 
 ## Planned scope
 
@@ -727,6 +749,29 @@ Run `python3 tests/check-bootstrap.py` for wrapper argument, platform, profile,
 path handling, and exit-status checks using a recording Ansible fixture.
 
 Run `python3 tests/check-snap-setup.py` for offline Snap setup tests covering
-category ordering, workplace filtering, check mode, service repair, mount-path
+category ordering, workplace filtering, check mode, existing-service preservation, mount-path
 preservation, failures, and repeat-run idempotence. Package managers, Snap, and
 systemd are simulated; these checks do not validate real daemon startup or snap mounts.
+
+Run `python3 tests/check-config-preservation.py` to verify managed-file adoption,
+backed-up updates, unmarked files and symlinks, directory/file permissions, Ghostty
+load order, legacy filenames, included configuration, and repeat-run idempotence.
+
+### Cross-platform audit (2026-10-08)
+
+All ten portable regression suites passed on macOS, Ubuntu 26.04 ARM64, and Fedora
+44 ARM64; the macOS integration suite also passed. Fresh Apple Containers ran real
+installations of VS Code, Zed, JetBrains fonts, Flatpak/Flathub, and 1Password on
+both Linux distributions, Typora on Ubuntu, and Ghostty via COPR on Fedora.
+The combined application/terminal playbook installed real Fisher plugins and shell
+configuration in the containers. Repeat applications and final check-mode runs
+reported zero changes for the tested selections.
+
+These minimal images do not boot systemd. Snap's real preflight correctly refused
+them without changes; Snap package/service behavior was tested with fixtures.
+Ubuntu's real run excluded `package_managers` and `utilities` (Ghostty needs Snap);
+Fedora excluded `package_managers`, used COPR for Ghostty, and skipped Typora because
+Snap was absent. GUI launches, macOS package installation, App Store operations,
+and live Apple Container upgrades were not exercised. Package-manager dependencies
+and vendor post-install hooks remain upstream behavior, beyond repository-managed
+configuration. The local Mac was used only for isolated fixtures and container hosting.

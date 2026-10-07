@@ -131,4 +131,12 @@ home, values = scenario('excluded', snap=True)
 values['applications_excluded_categories'] = ['utilities']
 assert 'changed=0' in run('excluded', home, values)
 assert not (home / 'calls').exists()
+home, values = scenario('existing-repo', distribution='Fedora', manager='dnf5')
+repo_file = home / 'repos/workstation-scottames-ghostty.repo'
+repo_file.parent.mkdir()
+repo_file.write_text('# Existing administrator configuration\n')
+repo_file.chmod(0o600)
+run('existing-repo', home, values)
+assert repo_file.read_text() == '# Existing administrator configuration\n'
+assert repo_file.stat().st_mode & 0o777 == 0o600
 print(f'Ghostty checks passed on {sys.platform}; package managers simulated. Logs: {root}')

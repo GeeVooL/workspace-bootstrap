@@ -27,7 +27,9 @@ plugins, and shared shell paths. Further development toolchains are planned. Rea
 - Support macOS and Linux; detect executable paths and make platform differences
   explicit. Do not hardcode a particular user's home directory.
 - Keep Ansible tasks idempotent and compatible with check mode. Prefer built-in
-  modules and preserve backups when replacing existing configuration contents.
+  modules. Only update configuration marked as managed by Workstation Bootstrap
+  (or an exact known legacy snippet); back it up and preserve unmarked files,
+  symlinks, and unrelated service state.
 - Preserve unrelated settings, especially Ghostty fonts, themes, and key bindings.
   Keep Ghostty configuration optional and leave the account login shell unchanged
   unless the requested task explicitly includes changing it.

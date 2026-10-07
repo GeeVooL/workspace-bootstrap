@@ -30,7 +30,6 @@
       ansible.builtin.file:
         path: "{{ applications_macos_install_dir }}"
         state: directory
-        mode: '0755'
 
     - name: Copy application bundle from official disk image
       ansible.builtin.command:

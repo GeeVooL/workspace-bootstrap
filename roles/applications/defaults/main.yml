@@ -16,3 +16,4 @@ applications_onepassword_dir: /opt/1Password
 applications_xcode_select: /usr/bin/xcode-select
 applications_snap_mount_path: /snap
 applications_snap_mount_source: /var/lib/snapd/snap
+applications_desktop_directories: /usr/share/desktop-directories

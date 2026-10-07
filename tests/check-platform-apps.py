@@ -106,7 +106,7 @@ for font in ['JetBrainsMono-Regular.ttf', 'JetBrainsMonoNerdFont-Regular.ttf']:
 source = root / 'vendor'
 source.mkdir()
 script = source / 'after-install.sh'
-script.write_text('#!/bin/sh\nset -eu\nprintf "#!/bin/sh\\n" > "$APP_FIXTURE/bin/1password"\nchmod +x "$APP_FIXTURE/bin/1password"\n')
+script.write_text('#!/bin/sh\nset -eu\ntest ! -e "$APP_FIXTURE/fail-integration" || exit 1\nprintf "#!/bin/sh\\n" > "$APP_FIXTURE/bin/1password"\nchmod +x "$APP_FIXTURE/bin/1password"\n')
 script.chmod(0o755)
 with tarfile.open(root / '1password.tar.gz', 'w:gz') as archive:
     archive.add(source, arcname='1password')
@@ -138,6 +138,7 @@ def scenario(name, category, system='Linux', arch='aarch64', family='Debian', ap
                                      user_uid=501, env=dict(HOME=str(home), PATH=str(bins))),
                   applications_catalog={category: {platform: selected}},
                   applications_search_path=str(bins), homebrew_search_path=str(bins),
+                  applications_desktop_directories=str(home / 'desktop-directories'),
                   applications_fonts_dir=str(home / 'fonts'), applications_onepassword_dir=str(home / 'opt/1Password'),
                   applications_xcode_select=str(bins / 'xcode-select'),
                   applications_macos_dirs=[str(home / 'Applications')], applications_macos_install_dir=str(home / 'Applications'))
@@ -189,11 +190,27 @@ for name, category, kwargs in [
         run('flatpak-disabled-check', home, values, check=True)
         assert (home / 'remote').read_text() == 'disabled'
         run('flatpak-enable', home, values)
-        assert (home / 'remote').read_text() == 'user'
+        assert (home / 'remote').read_text() == 'disabled'
         assert 'changed=0' in run('flatpak-enabled-repeat', home, values)
 for failure in ['bad-key', 'bad-signature']:
     home, values = scenario(failure, 'security', apps=['1password'])
     (home / failure).touch()
     run(failure, home, values, expected=2)
     assert not (home / 'opt').exists() and not (home / 'bin/1password').exists()
+if sys.platform == 'linux':
+    home, values = scenario('interrupted-password', 'security', apps=['1password'])
+    (home / 'fail-integration').touch()
+    run('interrupted-password', home, values, expected=2)
+    marker = home / 'opt/1Password/.workstation-bootstrap-installing'
+    assert marker.exists() and not (home / 'bin/1password').exists()
+    (home / 'fail-integration').unlink()
+    run('resume-password', home, values)
+    assert not marker.exists() and (home / 'bin/1password').exists()
+    home, values = scenario('unmanaged-password', 'security', apps=['1password'])
+    original = home / 'opt/1Password/user-file'
+    original.parent.mkdir(parents=True)
+    original.write_text('preserve')
+    run('unmanaged-password-check', home, values, check=True, expected=2)
+    run('unmanaged-password', home, values, expected=2)
+    assert original.read_text() == 'preserve'
 print(f'Platform app checks passed on {sys.platform}; external installers simulated. Logs: {root}')

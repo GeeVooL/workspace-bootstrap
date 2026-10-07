@@ -51,7 +51,6 @@
       ansible.builtin.file:
         path: "{{ applications_fonts_dir }}/{{ application.id }}"
         state: directory
-        mode: '0755'
 
     - name: Install font files
       ansible.builtin.copy:
@@ -59,7 +58,7 @@
         dest: "{{ applications_fonts_dir }}/{{ application.id }}/{{ item.path | basename }}"
         remote_src: true
         mode: '0644'
-        backup: true
+        force: false
       loop: "{{ application_font_files.files }}"
       loop_control:
         label: "{{ item.path | basename }}"

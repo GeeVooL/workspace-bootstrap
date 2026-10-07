@@ -58,7 +58,6 @@
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
-        mode: '0700'
       loop:
         - "{{ terminal_config_root }}/fish/conf.d"
         - "{{ terminal_config_root }}/workstation-bootstrap"
@@ -69,22 +68,24 @@
         state: directory
       loop: "{{ [shell_home, shell_zdotdir] | unique | list }}"
 
-    - name: Install early Fish PATH configuration
-      ansible.builtin.template:
-        src: shell-paths.fish.j2
-        dest: "{{ terminal_config_root }}/fish/conf.d/00-workstation-path.fish"
-        mode: '0644'
-        backup: true
-
-    - name: Install shared Bash and Zsh PATH configuration
-      ansible.builtin.template:
-        src: shell-paths.sh.j2
-        dest: "{{ terminal_config_root }}/workstation-bootstrap/path.sh"
-        mode: '0644'
-        backup: true
-        validate: /bin/sh -n %s
+    - name: Install managed shell PATH files
+      ansible.builtin.include_role:
+        name: managed_config
+      vars:
+        managed_config_path: "{{ shell_path_file.dest }}"
+        managed_config_content: "{{ lookup('template', ansible_parent_role_paths[0] ~ '/templates/' ~ shell_path_file.src) }}"
+        managed_config_validate: "{{ shell_path_file.validate | default(omit) }}"
+      loop:
+        - src: shell-paths.fish.j2
+          dest: "{{ terminal_config_root }}/fish/conf.d/00-workstation-path.fish"
+        - src: shell-paths.sh.j2
+          dest: "{{ terminal_config_root }}/workstation-bootstrap/path.sh"
+          validate: /bin/sh -n %s
+      loop_control:
+        loop_var: shell_path_file
 
     - name: Load executable paths in interactive and login shells
+      when: managed_config_owned
       ansible.builtin.blockinfile:
         path: "{{ item }}"
         create: true

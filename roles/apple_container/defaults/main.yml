@@ -4,3 +4,4 @@ apple_container_executable: /usr/local/bin/container
 apple_container_installer_executable: /usr/sbin/installer
 apple_container_pkgutil_executable: /usr/sbin/pkgutil
 apple_container_launchctl_executable: /bin/launchctl
+apple_container_start_after_install: true

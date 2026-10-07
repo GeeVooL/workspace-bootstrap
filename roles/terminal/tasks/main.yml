@@ -69,21 +69,23 @@
       ansible.builtin.file:
         path: "{{ terminal_config_root }}/fish/conf.d"
         state: directory
-        mode: '0700'
 
-    - name: Install the Fish configuration snippets
-      ansible.builtin.copy:
-        src: "{{ role_path }}/files/fish/{{ item }}"
-        dest: "{{ terminal_config_root }}/fish/conf.d/{{ item }}"
-        mode: '0644'
-        backup: true
-        validate: "{{ fish_executable }} --no-execute %s"
+    - name: Install the managed Fish configuration snippets
+      ansible.builtin.include_role:
+        name: managed_config
+      vars:
+        managed_config_path: "{{ terminal_config_root }}/fish/conf.d/{{ terminal_snippet }}"
+        managed_config_content: "{{ lookup('file', ansible_parent_role_paths[0] ~ '/files/fish/' ~ terminal_snippet, rstrip=false) }}"
+        managed_config_legacy_contents: ["{{ managed_config_content.split('\n', 1)[1] }}"]
+        managed_config_validate: "{{ fish_executable }} --no-execute %s"
       loop:
         - git-abbreviations.fish
         - mise.fish
         - starship.fish
         - fzf-options.fish
         - zoxide.fish
+      loop_control:
+        loop_var: terminal_snippet
 
     - name: Inspect the previous fzf snippet
       ansible.builtin.stat:
@@ -158,21 +160,8 @@
           changed_when: true
           when: ansible_check_mode
 
-    - name: Create Ghostty configuration directory
-      ansible.builtin.file:
-        path: "{{ ghostty_config_path | dirname }}"
-        state: directory
-        mode: '0700'
-      when: configure_ghostty | bool
-
-    - name: Launch Fish in Ghostty
-      ansible.builtin.lineinfile:
-        path: "{{ ghostty_config_path }}"
-        regexp: '^\s*command\s*='
-        line: "command = {{ fish_executable }}"
-        create: true
-        mode: '0644'
-        backup: true
+    - name: Configure Ghostty without replacing existing commands
+      ansible.builtin.include_tasks: ghostty.yml
       when: configure_ghostty | bool
 
     - name: Explain activation

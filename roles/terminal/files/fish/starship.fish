@@ -1,3 +1,4 @@
+# Managed by Workstation Bootstrap.
 # Initialize Starship for interactive Fish sessions.
 if status is-interactive
     if command -q starship

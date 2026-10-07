@@ -46,6 +46,8 @@ catalog['utilities']['macos']['apps'] = []
 
 def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
     variables = dict(variables or {}, ansible_python_interpreter=python)
+    variables.setdefault('applications_macos_dirs', [str(root / 'Applications')])
+    variables.setdefault('applications_macos_install_dir', str(root / 'Applications'))
     variables.setdefault('shell_home', str(root / 'home'))
     variables.setdefault('shell_zdotdir', str(root / 'zsh'))
     variables.setdefault('shell_extra_bin_paths', [str(root)])
@@ -89,8 +91,8 @@ variables = {'terminal_config_root': str(root / 'config'), 'ghostty_config_path'
 run('terminal-apply', 'terminal.yml', variables)
 assert 'changed=0' in run('terminal-repeat', 'terminal.yml', variables)
 assert 'changed=0' in run('terminal-check', 'terminal.yml', variables, '--check')
-assert ghostty.read_text().startswith(original.split('command =')[0])
-assert list(ghostty.parent.glob('config.ghostty.*~'))
+assert ghostty.read_text() == original
+assert not list(ghostty.parent.glob('config.ghostty.*~'))
 for source in Path('roles/terminal/files/fish').glob('*.fish'):
     assert source.read_bytes() == (root / 'config' / 'fish' / 'conf.d' / source.name).read_bytes()
 # Selection must not invoke Homebrew or deploy unselected components.

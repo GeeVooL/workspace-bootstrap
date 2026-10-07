@@ -41,8 +41,16 @@ args = sys.argv[1:]
 with (root / 'calls').open('a') as log:
     log.write(json.dumps([name, *args]) + '\n')
 if name == 'container':
-    assert args == ['--version']
-    print('container CLI version ' + (root / 'version').read_text())
+    if args == ['--version']:
+        print('container CLI version ' + (root / 'version').read_text())
+    elif args == ['list', '--format', 'json']:
+        print('[{"id":"busy"}]' if (root / 'busy').exists() else '[]')
+    elif args == ['system', 'stop']:
+        assert not (root / 'busy').exists()
+        (root / 'running').unlink()
+    elif args == ['system', 'start', '--enable-kernel-install']:
+        (root / 'running').touch()
+    else: raise AssertionError(args)
 elif name == 'launchctl':
     assert args == ['list']
     if (root / 'running').exists():
@@ -55,6 +63,8 @@ elif name == 'pkgutil':
 elif name == 'installer':
     assert args[0] == '-pkg' and args[2:] == ['-target', '/']
     assert pathlib.Path(args[1]).read_bytes() == b'fixture package'
+    assert not (root / 'running').exists()
+    if (root / 'failed-install').exists(): sys.exit(1)
     (root / 'version').write_text('1.5.0')
     if not (root / 'container').exists():
         (root / 'container').symlink_to(root / 'fixture')
@@ -97,6 +107,7 @@ try:
     assert not calls() and not (root / 'container').exists()
     run('fresh-install')
     assert installed() == 1 and (root / 'version').read_text() == '1.5.0'
+    assert (root / 'running').exists()
     assert 'changed=0' in run('repeat')
     assert 'changed=0' in run('installed-check', check=True)
     assert installed() == 1
@@ -104,22 +115,37 @@ try:
     assert 'changed=1' in run('upgrade-check', check=True)
     assert (root / 'version').read_text() == '1.4.0'
     (root / 'running').touch()
-    run('running-service', expected=2)
+    (root / 'busy').touch()
+    run('running-workload', expected=2)
+    assert (root / 'running').exists()
+    (root / 'busy').unlink()
     assert installed() == 1
-    (root / 'running').unlink()
     (root / 'bad-signature').touch()
     run('invalid-signature', expected=2)
     assert installed() == 1
+    assert (root / 'running').exists()
     (root / 'bad-signature').unlink()
     (root / 'package.pkg').write_bytes(b'corrupted package')
     run('invalid-checksum', expected=2)
     assert installed() == 1
     (root / 'package.pkg').write_bytes(b'fixture package')
+    (root / 'failed-install').touch()
+    run('failed-upgrade', expected=2)
+    assert (root / 'running').exists()
+    (root / 'failed-install').unlink()
     run('upgrade')
-    assert installed() == 2
+    assert installed() == 3
+    assert (root / 'running').exists()
     assert 'changed=0' in run('upgrade-repeat')
     (root / 'version').write_text('9.0.0')
     assert 'changed=0' in run('no-downgrade')
+    (root / 'version').write_text('1.4.0')
+    (root / 'running').unlink()
+    run('upgrade-stopped-service')
+    assert not (root / 'running').exists()
+    (root / 'container').unlink()
+    run('fresh-install-without-start', {'apple_container_start_after_install': False})
+    assert not (root / 'running').exists()
     before = calls()
     for name, facts in [
         ('intel', {'system': 'Darwin', 'architecture': 'x86_64', 'distribution_version': '26.0', 'user_uid': 501}),

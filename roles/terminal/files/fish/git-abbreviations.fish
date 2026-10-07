@@ -1,3 +1,4 @@
+# Managed by Workstation Bootstrap.
 # Git abbreviations for interactive Fish sessions.
 if status is-interactive
 

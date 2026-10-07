@@ -1,3 +1,4 @@
+# Managed by Workstation Bootstrap.
 # Shared picker appearance; Fisher's fzf.fish plugin supplies the bindings.
 if status is-interactive
     if command -q fzf

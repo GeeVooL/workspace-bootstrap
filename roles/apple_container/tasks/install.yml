@@ -60,11 +60,9 @@
       register: apple_container_services
       changed_when: false
 
-    - name: Require Apple container to be stopped before installing
-      ansible.builtin.assert:
-        that:
-          - apple_container_services.stdout is not search('com\\.apple\\.container(?:\\s|\\.|$)')
-        fail_msg: Stop Apple container with 'container system stop', then rerun the playbook.
+    - name: Remember the service state before installation
+      ansible.builtin.set_fact:
+        apple_container_was_running: "{{ apple_container_services.stdout is search('com\\.apple\\.container(?:\\s|\\.|$)') }}"
 
     - name: Create a temporary Apple container installer directory
       ansible.builtin.tempfile:
@@ -84,6 +82,26 @@
         argv: ["{{ apple_container_pkgutil_executable }}", --check-signature, "{{ apple_container_temp.path }}/container.pkg"]
       changed_when: false
 
+    - name: Inspect active containers before an upgrade
+      ansible.builtin.command:
+        argv: ["{{ apple_container_executable }}", list, --format, json]
+      register: apple_container_active
+      changed_when: false
+      when: apple_container_was_running
+
+    - name: Refuse to interrupt active containers
+      ansible.builtin.assert:
+        that: apple_container_active.stdout | from_json | length == 0
+        fail_msg: Stop your running containers before upgrading Apple Container; no workloads have been stopped.
+      when: apple_container_was_running
+
+    - name: Stop the idle service before replacing its binaries
+      ansible.builtin.command:
+        argv: ["{{ apple_container_executable }}", system, stop]
+      register: apple_container_stopped
+      changed_when: true
+      when: apple_container_was_running
+
     - name: Install the signed Apple container package as administrator
       ansible.builtin.command:
         argv: ["{{ apple_container_installer_executable }}", -pkg, "{{ apple_container_temp.path }}/container.pkg", -target, /]
@@ -99,9 +117,21 @@
       failed_when: >-
         (apple_container_verified.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) != apple_container_version
 
+    - name: Start the service after a fresh installation
+      ansible.builtin.command:
+        argv: ["{{ apple_container_executable }}", system, start, --enable-kernel-install]
+      changed_when: true
+      when: not apple_container_binary.stat.exists and apple_container_start_after_install | bool
+
   always:
     - name: Remove the temporary Apple container installer directory
       ansible.builtin.file:
         path: "{{ apple_container_temp.path }}"
         state: absent
       when: apple_container_temp.path is defined
+
+    - name: Restore the previously running service even if installation fails
+      ansible.builtin.command:
+        argv: ["{{ apple_container_executable }}", system, start, --enable-kernel-install]
+      changed_when: true
+      when: apple_container_stopped is defined and apple_container_stopped is changed

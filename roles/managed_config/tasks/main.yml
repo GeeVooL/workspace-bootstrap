@@ -1,0 +1,34 @@
+---
+- name: Inspect configuration ownership without following symlinks
+  ansible.builtin.stat:
+    path: "{{ managed_config_path }}"
+    follow: false
+  register: managed_config_stat
+
+- name: Read an existing regular configuration file
+  ansible.builtin.slurp:
+    src: "{{ managed_config_path }}"
+  register: managed_config_existing
+  when: managed_config_stat.stat.isreg | default(false)
+
+- name: Determine whether configuration belongs to this repository
+  ansible.builtin.set_fact:
+    managed_config_owned: >-
+      {{ not managed_config_stat.stat.exists or
+         (managed_config_stat.stat.isreg | default(false) and
+          ((managed_config_existing.content | default('') | b64decode).startswith('# Managed by Workstation Bootstrap.') or
+           (managed_config_existing.content | default('') | b64decode) in managed_config_legacy_contents)) }}
+
+- name: Preserve configuration not managed by this repository
+  ansible.builtin.debug:
+    msg: "Preserving {{ managed_config_path }}: it is not marked as managed by Workstation Bootstrap."
+  when: not managed_config_owned
+
+- name: Install or update repository-managed configuration with a backup
+  ansible.builtin.copy:
+    content: "{{ managed_config_content }}"
+    dest: "{{ managed_config_path }}"
+    mode: '0644'
+    backup: true
+    validate: "{{ managed_config_validate | default(omit) }}"
+  when: managed_config_owned

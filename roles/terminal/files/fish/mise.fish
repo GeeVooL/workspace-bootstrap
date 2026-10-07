@@ -1,3 +1,4 @@
+# Managed by Workstation Bootstrap.
 # Activate installed mise tools and directory-change hooks in interactive Fish.
 if status is-interactive
     if command -q mise

@@ -1,0 +1,40 @@
+---
+- name: Inspect Ghostty configuration locations in load order
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ ghostty_config_paths }}"
+  register: ghostty_config_stats
+
+- name: Read existing Ghostty configuration files
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ ghostty_config_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
+  register: ghostty_config_contents
+
+- name: Preserve existing launch commands and included configuration
+  ansible.builtin.set_fact:
+    ghostty_has_launch_config: "{{ (ghostty_config_contents.results | selectattr('content', 'defined') | map(attribute='content') | map('b64decode') | join('\n')) is search('(?m)^\\s*(command|initial-command|config-file)\\s*=') }}"
+    ghostty_target_path: "{{ (ghostty_config_stats.results | selectattr('stat.exists') | map(attribute='item') | list | last) | default(ghostty_config_path | default(ghostty_default_config_path)) }}"
+
+- name: Explain preserved Ghostty launch configuration
+  ansible.builtin.debug:
+    msg: Preserving existing Ghostty command or included configuration; no launch command will be added.
+  when: ghostty_has_launch_config
+
+- name: Add a launch command only when no loaded configuration defines one
+  when: not ghostty_has_launch_config
+  block:
+    - name: Create the Ghostty configuration directory without changing its permissions
+      ansible.builtin.file:
+        path: "{{ ghostty_target_path | dirname }}"
+        state: directory
+
+    - name: Append the missing Fish launch command
+      ansible.builtin.lineinfile:
+        path: "{{ ghostty_target_path }}"
+        line: "command = {{ fish_executable }}"
+        create: true
+        backup: true

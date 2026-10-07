@@ -122,12 +122,12 @@ for distro in ['Ubuntu', 'Debian', 'Fedora']:
     assert (home / 'installed-snapd').exists() == (distro == 'Debian')
     assert 'changed=0' in run(distro + '-repeat', home, values)
     assert 'changed=0' in run(distro + '-final-check', home, values, check=True)
-    # An installed CLI must not prevent repairing disabled services.
+    # Existing disabled services are intentional user settings, not setup damage.
     (home / 'snapd.socket').unlink()
-    run(distro + '-repair-check', home, values, check=True)
+    values['applications_enabled_categories'] = ['package_managers']
+    assert 'changed=0' in run(distro + '-preserve-check', home, values, check=True)
+    assert 'changed=0' in run(distro + '-preserve', home, values)
     assert not (home / 'snapd.socket').exists()
-    run(distro + '-repair', home, values)
-    assert (home / 'snapd.socket').exists()
 
 for name in ['excluded', 'denied', 'mac', 'unsupported', 'no-systemd', 'collision', 'seed-failure']:
     home, values = scenario(name, system='Darwin' if name == 'mac' else 'Linux')
