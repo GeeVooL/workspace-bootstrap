@@ -100,7 +100,12 @@
     - name: Determine missing packages
       ansible.builtin.set_fact:
         macos_missing_formulae: "{{ macos_homebrew_formulae | difference(macos_installed_formulae.stdout_lines | default([])) | sort }}"
-        macos_missing_casks: "{{ macos_homebrew_casks | difference(macos_installed_casks.stdout_lines | default([])) | sort }}"
+        # brew list --cask returns tokens even when installation used owner/tap/token.
+        macos_missing_casks: >-
+          {{ dict(macos_homebrew_casks | zip(macos_homebrew_casks | map('basename')))
+             | dict2items
+             | rejectattr('value', 'in', macos_installed_casks.stdout_lines | default([]) | map('basename') | list)
+             | map(attribute='key') | unique | sort }}
 
     - name: Preview missing packages
       ansible.builtin.debug:

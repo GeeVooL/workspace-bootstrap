@@ -1,0 +1,134 @@
+---
+- name: Inspect upstream archive destination
+  ansible.builtin.stat:
+    path: "{{ application.destination }}"
+    follow: false
+  register: upstream_destination
+
+- name: Preserve existing archive destinations
+  ansible.builtin.assert:
+    that: not upstream_destination.stat.exists
+    fail_msg: "Preserving existing {{ application.destination }}; move it aside or select a different destination before installing {{ application.name }}."
+
+- name: Preview official upstream archive installation
+  ansible.builtin.debug:
+    msg: "Would install {{ application.name }} from current stable upstream metadata at {{ application.metadata_url }} into {{ application.destination }}."
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Install missing official upstream archive
+  when: not ansible_check_mode
+  block:
+    - name: Resolve current stable upstream download and checksum
+      ansible.builtin.script:
+        cmd: >-
+          {{ role_path }}/files/resolve-upstream.py
+          {{ application.metadata_kind | quote }}
+          {{ application.metadata_url | quote }}
+          {{ application.asset_pattern | default('') | quote }}
+        executable: "{{ ansible_python_interpreter | default(ansible_facts.python.executable) }}"
+      register: upstream_metadata_result
+      changed_when: false
+
+    - name: Read resolved upstream metadata
+      ansible.builtin.set_fact:
+        upstream_metadata: "{{ upstream_metadata_result.stdout | from_json }}"
+
+    - name: Create installation parent directory
+      ansible.builtin.file:
+        path: "{{ application.destination | dirname }}"
+        state: directory
+
+    - name: Create temporary archive staging directory beside destination
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ application.destination | dirname }}"
+        prefix: .workstation-download-
+      register: upstream_temp
+
+    - name: Download verified upstream archive
+      ansible.builtin.get_url:
+        url: "{{ upstream_metadata.url }}"
+        checksum: "{{ upstream_metadata.checksum | default(omit, true) }}"
+        dest: "{{ upstream_temp.path }}/download.{{ application.archive_format }}"
+        mode: '0600'
+
+    - name: Create archive extraction directory
+      ansible.builtin.file:
+        path: "{{ upstream_temp.path }}/unpacked"
+        state: directory
+        mode: '0700'
+
+    - name: Extract the data archive from Google's Debian package
+      ansible.builtin.script:
+        cmd: >-
+          {{ role_path }}/files/extract-deb-data.py
+          {{ (upstream_temp.path ~ '/download.deb') | quote }}
+          {{ (upstream_temp.path ~ '/data.tar') | quote }}
+        executable: "{{ ansible_python_interpreter | default(ansible_facts.python.executable) }}"
+      when: application.archive_format == 'deb'
+
+    - name: Extract upstream archive
+      ansible.builtin.unarchive:
+        src: "{{ upstream_temp.path ~ '/data.tar' if application.archive_format == 'deb' else upstream_temp.path ~ '/download.' ~ application.archive_format }}"
+        dest: "{{ upstream_temp.path }}/unpacked"
+        remote_src: true
+
+    - name: Locate archive root
+      ansible.builtin.find:
+        paths: "{{ upstream_temp.path }}/unpacked/{{ application.archive_parent | default('') }}"
+        patterns: "{{ application.archive_root }}"
+        file_type: directory
+      register: upstream_roots
+      when: application.archive_root != '.'
+
+    - name: Require exactly one archive root
+      ansible.builtin.assert:
+        that: upstream_roots.matched == 1
+      when: application.archive_root != '.'
+
+    - name: Select extracted archive root
+      ansible.builtin.set_fact:
+        upstream_root: "{{ upstream_temp.path ~ '/unpacked' if application.archive_root == '.' else upstream_roots.files[0].path }}"
+
+    - name: Check expected executable payloads before installing
+      ansible.builtin.stat:
+        path: "{{ upstream_root }}/{{ item }}"
+      loop: "{{ application.executables }}"
+      register: upstream_executables
+
+    - name: Require all executable payloads
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg | default(false)
+      loop: "{{ upstream_executables.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Ensure archive launchers are executable
+      ansible.builtin.file:
+        path: "{{ upstream_root }}/{{ item }}"
+        mode: '0755'
+      loop: "{{ application.executables }}"
+
+    - name: Record installer ownership and source
+      ansible.builtin.copy:
+        content: "{{ upstream_metadata | to_nice_json }}\n"
+        dest: "{{ upstream_root }}/.workstation-bootstrap.json"
+        mode: '0644'
+
+    - name: Install verified archive without replacing an existing destination
+      ansible.builtin.command:
+        argv: [mv, -n, "{{ upstream_root }}", "{{ application.destination }}"]
+        creates: "{{ application.destination }}"
+      changed_when: true
+
+    - name: Reconcile launchers for the installed archive
+      ansible.builtin.include_tasks: upstream_launchers.yml
+
+  always:
+    - name: Remove temporary upstream downloads
+      ansible.builtin.file:
+        path: "{{ upstream_temp.path }}"
+        state: absent
+      when: upstream_temp.path is defined

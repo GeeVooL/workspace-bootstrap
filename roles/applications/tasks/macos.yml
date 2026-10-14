@@ -18,3 +18,19 @@
   loop_control:
     loop_var: application
     label: "{{ application.name }}"
+  when:
+    - application.architectures is not defined or ansible_facts.architecture in application.architectures
+    - application.minimum_macos_version is not defined or ansible_facts.distribution_version is version(application.minimum_macos_version, '>=')
+
+- name: Report applications unsupported on this Mac
+  ansible.builtin.debug:
+    msg: >-
+      {{ application.name }} requires architectures {{ application.architectures | default(['any']) | join(', ') }}
+      and macOS {{ application.minimum_macos_version | default('0') }} or later; skipping installation.
+  loop: "{{ category_apps.apps | default([]) }}"
+  loop_control:
+    loop_var: application
+    label: "{{ application.name }}"
+  when: >-
+    (application.architectures is defined and ansible_facts.architecture not in application.architectures) or
+    (application.minimum_macos_version is defined and ansible_facts.distribution_version is version(application.minimum_macos_version, '<'))

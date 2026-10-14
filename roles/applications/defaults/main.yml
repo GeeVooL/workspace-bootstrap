@@ -17,3 +17,5 @@ applications_xcode_select: /usr/bin/xcode-select
 applications_snap_mount_path: /snap
 applications_snap_mount_source: /var/lib/snapd/snap
 applications_desktop_directories: /usr/share/desktop-directories
+applications_android_dir: "{{ applications_home }}/.local/share/workstation-bootstrap/android"
+applications_android_java_home: "{{ applications_android_dir }}/java"

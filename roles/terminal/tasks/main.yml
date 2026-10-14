@@ -95,6 +95,7 @@
       ansible.builtin.stat:
         path: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
         checksum_algorithm: sha256
+        follow: false
       register: previous_fzf
 
     - name: Back up the previous managed fzf integration
@@ -103,13 +104,13 @@
         dest: "{{ terminal_config_root }}/fish/conf.d/fzf.fish.{{ ansible_facts.date_time.iso8601_basic_short }}.bak"
         remote_src: true
         mode: '0600'
-      when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
+      when: (previous_fzf.stat.isreg | default(false)) and (previous_fzf.stat.checksum | default('')) == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
 
     - name: Remove the previous managed fzf integration
       ansible.builtin.file:
         path: "{{ terminal_config_root }}/fish/conf.d/fzf.fish"
         state: absent
-      when: previous_fzf.stat.exists and previous_fzf.stat.checksum == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
+      when: (previous_fzf.stat.isreg | default(false)) and (previous_fzf.stat.checksum | default('')) == (lookup('file', role_path ~ '/files/fisher/legacy-fzf.fish', rstrip=false) | hash('sha256'))
 
     - name: Inspect required Fisher plugin metadata and files
       ansible.builtin.command:

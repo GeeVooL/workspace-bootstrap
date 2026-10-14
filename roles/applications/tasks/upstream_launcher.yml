@@ -1,0 +1,19 @@
+---
+- name: Inspect existing launcher without following symlinks
+  ansible.builtin.stat:
+    path: "{{ applications_bin_dir }}/{{ upstream_launcher.name }}"
+    follow: false
+  register: upstream_launcher_stat
+
+- name: Preserve existing launcher
+  ansible.builtin.debug:
+    msg: "Preserving existing {{ applications_bin_dir }}/{{ upstream_launcher.name }}."
+  when: upstream_launcher_stat.stat.exists
+
+- name: Create upstream launcher
+  ansible.builtin.template:
+    src: upstream-launcher.sh.j2
+    dest: "{{ applications_bin_dir }}/{{ upstream_launcher.name }}"
+    mode: '0755'
+    force: false
+  when: not upstream_launcher_stat.stat.exists

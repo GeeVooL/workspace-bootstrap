@@ -84,17 +84,36 @@
       loop_control:
         loop_var: shell_path_file
 
-    - name: Load executable paths in interactive and login shells
-      when: managed_config_owned
-      ansible.builtin.blockinfile:
+    - name: Inspect shell startup files without following symlinks
+      ansible.builtin.stat:
         path: "{{ item }}"
-        create: true
-        backup: true
-        insertbefore: BOF
-        marker: '# {mark} WORKSTATION BOOTSTRAP PATH'
-        block: "{{ lookup('ansible.builtin.template', role_path ~ '/templates/shell-path-hook.sh.j2') }}"
+        follow: false
       loop:
         - "{{ shell_home }}/.bashrc"
         - "{{ shell_bash_login_path }}"
         - "{{ shell_zdotdir }}/.zshrc"
         - "{{ shell_zdotdir }}/.zprofile"
+      register: shell_startup_files
+
+    - name: Preserve symlinks and nonregular shell startup files
+      ansible.builtin.debug:
+        msg: "Preserving {{ item.item }}: it is not a regular file."
+      loop: "{{ shell_startup_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.stat.exists and not (item.stat.isreg | default(false))
+
+    - name: Load executable paths in interactive and login shells
+      when:
+        - managed_config_owned
+        - not item.stat.exists or item.stat.isreg | default(false)
+      ansible.builtin.blockinfile:
+        path: "{{ item.item }}"
+        create: true
+        backup: true
+        insertbefore: BOF
+        marker: '# {mark} WORKSTATION BOOTSTRAP PATH'
+        block: "{{ lookup('ansible.builtin.template', role_path ~ '/templates/shell-path-hook.sh.j2') }}"
+      loop: "{{ shell_startup_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"

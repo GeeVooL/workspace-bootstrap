@@ -11,14 +11,19 @@
   failed_when: application_developer_dir.rc not in [0, 2]
   check_mode: false
 
-- name: Check the selected compiler
+- name: Check standalone Command Line Tools and Xcode compiler locations
   ansible.builtin.stat:
-    path: "{{ application_developer_dir.stdout }}/usr/bin/clang"
-  register: application_developer_compiler
+    path: "{{ application_developer_dir.stdout }}/{{ item }}"
+  loop:
+    - usr/bin/clang
+    - Toolchains/XcodeDefault.xctoolchain/usr/bin/clang
+  register: application_developer_compilers
   when: application_developer_dir.rc == 0
 
 - name: Request missing Apple Command Line Tools
-  when: not (application_developer_compiler.stat.exists | default(false))
+  when: >-
+    application_developer_compilers.results | default([])
+    | selectattr('stat', 'defined') | selectattr('stat.exists') | list | length == 0
   block:
     - name: Preview the interactive Apple installer
       ansible.builtin.debug:

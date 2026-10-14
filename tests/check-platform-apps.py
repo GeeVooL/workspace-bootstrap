@@ -25,6 +25,11 @@ shutil.copytree(repo / 'roles', root / 'roles')
 def adapt(tasks):
     for task in tasks:
         task.pop('become', None)
+        # Use native tar for the tiny trusted archive fixture on macOS too;
+        # Ansible's tar extraction backend otherwise requires GNU tar.
+        if sys.platform != 'linux' and task.get('name') == 'Extract the verified archive':
+            archive = task.pop('ansible.builtin.unarchive')
+            task['ansible.builtin.command'] = {'argv': ['tar', '-xzf', archive['src'], '-C', archive['dest']]}
         if 'ansible.builtin.package' in task:
             package = task.pop('ansible.builtin.package')['name']
             task['ansible.builtin.command'] = {'argv': ['fixture-package', json.dumps(package), '{{ ansible_check_mode }}']}
@@ -92,7 +97,7 @@ elif name == 'mas':
     (home / 'Applications/Xcode.app').mkdir(parents=True)
 elif name == 'xcode-select':
     if args == ['-p']:
-        if not (home / 'Developer/usr/bin/clang').exists(): sys.exit(2)
+        if not (home / 'Developer').exists(): sys.exit(2)
         print(home / 'Developer')
     else:
         assert args == ['--install']
@@ -162,9 +167,6 @@ for name, category, kwargs in [
     ('password-mac', 'security', {'apps': ['1password'], 'system': 'Darwin'}),
     ('apple', 'apple_development', {'system': 'Darwin'}),
 ]:
-    if name == 'password-arm' and sys.platform != 'linux':
-        print('ARM archive extraction is exercised on Linux (Ansible requires GNU tar).', flush=True)
-        continue
     home, values = scenario(name, category, **kwargs)
     permitted = category in ['fonts', 'desktop']
     if not permitted:
@@ -192,25 +194,49 @@ for name, category, kwargs in [
         run('flatpak-enable', home, values)
         assert (home / 'remote').read_text() == 'disabled'
         assert 'changed=0' in run('flatpak-enabled-repeat', home, values)
+for layout in ['usr/bin/clang', 'Toolchains/XcodeDefault.xctoolchain/usr/bin/clang']:
+    name = 'clt-existing' if layout.startswith('usr/') else 'xcode-existing'
+    home, values = scenario(name, 'apple_development', system='Darwin', apps=['command-line-tools'])
+    compiler = home / 'Developer' / layout
+    compiler.parent.mkdir(parents=True)
+    compiler.touch()
+    assert 'changed=0' in run(name + '-check', home, values, check=True)
+    assert 'changed=0' in run(name + '-apply', home, values)
+    assert 'changed=0' in run(name + '-repeat', home, values)
+    assert not (home / 'clt-request').exists()
+
+home, values = scenario('clt-incomplete', 'apple_development', system='Darwin', apps=['command-line-tools'])
+(home / 'Developer').mkdir()
+assert 'changed=1' in run('clt-incomplete-check', home, values, check=True)
+assert not (home / 'clt-request').exists()
+run('clt-incomplete-apply', home, values, expected=2)
+assert (home / 'clt-request').exists()
+
 for failure in ['bad-key', 'bad-signature']:
     home, values = scenario(failure, 'security', apps=['1password'])
     (home / failure).touch()
     run(failure, home, values, expected=2)
     assert not (home / 'opt').exists() and not (home / 'bin/1password').exists()
-if sys.platform == 'linux':
-    home, values = scenario('interrupted-password', 'security', apps=['1password'])
-    (home / 'fail-integration').touch()
-    run('interrupted-password', home, values, expected=2)
-    marker = home / 'opt/1Password/.workstation-bootstrap-installing'
-    assert marker.exists() and not (home / 'bin/1password').exists()
-    (home / 'fail-integration').unlink()
-    run('resume-password', home, values)
-    assert not marker.exists() and (home / 'bin/1password').exists()
-    home, values = scenario('unmanaged-password', 'security', apps=['1password'])
-    original = home / 'opt/1Password/user-file'
-    original.parent.mkdir(parents=True)
-    original.write_text('preserve')
-    run('unmanaged-password-check', home, values, check=True, expected=2)
-    run('unmanaged-password', home, values, expected=2)
-    assert original.read_text() == 'preserve'
+home, values = scenario('interrupted-password', 'security', apps=['1password'])
+(home / 'fail-integration').touch()
+run('interrupted-password', home, values, expected=2)
+marker = home / 'opt/1Password/.workstation-bootstrap-installing'
+assert marker.exists() and not (home / 'bin/1password').exists()
+# Simulate failure after the vendor has exposed its command.
+command = home / 'bin/1password'
+command.write_text('#!/bin/sh\n')
+command.chmod(0o755)
+run('resume-password-check', home, values, check=True)
+assert marker.exists()
+(home / 'fail-integration').unlink()
+run('resume-password', home, values)
+assert not marker.exists() and (home / 'bin/1password').exists()
+assert 'changed=0' in run('resume-password-repeat', home, values)
+home, values = scenario('unmanaged-password', 'security', apps=['1password'])
+original = home / 'opt/1Password/user-file'
+original.parent.mkdir(parents=True)
+original.write_text('preserve')
+run('unmanaged-password-check', home, values, check=True, expected=2)
+run('unmanaged-password', home, values, expected=2)
+assert original.read_text() == 'preserve'
 print(f'Platform app checks passed on {sys.platform}; external installers simulated. Logs: {root}')

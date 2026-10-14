@@ -105,4 +105,39 @@ run('unmanaged-path', repo / 'shell-paths.yml', values)
 assert path_file.read_text() == '# My unrelated script\n'
 assert rc.read_text() == '# My startup file\n'
 assert not (home / '.zshrc').exists()
+# Symlinked startup files and Ghostty paths must not modify their targets.
+home = root / 'linked-startup'
+home.mkdir()
+original = root / 'shared-startup'
+original.write_text('# Shared dotfiles\n')
+for name in ['.bashrc', '.bash_profile', '.zshrc', '.zprofile']:
+    (home / name).symlink_to(original)
+values = dict(shell_home=str(home), shell_zdotdir=str(home), terminal_config_root=str(home / '.config'))
+run('linked-startup-check', repo / 'shell-paths.yml', values, check=True)
+run('linked-startup-apply', repo / 'shell-paths.yml', values)
+assert 'changed=0' in run('linked-startup-repeat', repo / 'shell-paths.yml', values)
+assert original.read_text() == '# Shared dotfiles\n'
+assert all((home / name).is_symlink() for name in ['.bashrc', '.bash_profile', '.zshrc', '.zprofile'])
+for dangling in [False, True]:
+    target = root / ('ghostty-link-target-' + str(dangling))
+    if not dangling:
+        target.write_text('font-size = 17\n')
+    link = home / ('ghostty-' + str(dangling))
+    link.symlink_to(target)
+    ghostty_values = dict(values, ghostty_config_path=str(link), fish_executable='/fixture/fish')
+    for label, check in [('check', True), ('apply', False), ('repeat', False)]:
+        assert 'changed=0' in run('linked-ghostty-' + str(dangling) + label, root / 'ghostty.yml', ghostty_values, check=check)
+    assert link.is_symlink()
+    assert not target.exists() if dangling else target.read_text() == 'font-size = 17\n'
+# The legacy migration must ignore a symlink, even to the exact legacy contents.
+seed_plugins(home / '.config/fish')
+target = root / 'legacy-fzf-target'
+target.write_bytes((repo / 'roles/terminal/files/fisher/legacy-fzf.fish').read_bytes())
+link = home / '.config/fish/conf.d/fzf.fish'
+link.symlink_to(target)
+for label, check in [('check', True), ('apply', False), ('repeat', False)]:
+    result = run('linked-legacy-fzf-' + label, repo / 'terminal.yml', dict(values, configure_ghostty=False), check=check)
+    if label == 'repeat': assert 'changed=0' in result
+assert link.is_symlink()
+assert target.read_bytes() == (repo / 'roles/terminal/files/fisher/legacy-fzf.fish').read_bytes()
 print(f'Configuration preservation passed on {sys.platform}. Logs: {root}')

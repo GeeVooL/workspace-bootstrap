@@ -1,0 +1,11 @@
+#!/bin/sh
+# Managed by Workstation Bootstrap.
+{% if application.java_home is defined %}
+export JAVA_HOME={{ application.java_home | quote }}
+{% endif %}
+{% if upstream_launcher.environment is defined %}
+{% for key, value in upstream_launcher.environment.items() %}
+export {{ key }}={{ value | quote }}
+{% endfor %}
+{% endif %}
+exec {{ (application.destination ~ '/' ~ upstream_launcher.path) | quote }} "$@"

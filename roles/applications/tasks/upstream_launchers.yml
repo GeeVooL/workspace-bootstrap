@@ -1,0 +1,31 @@
+---
+- name: Inspect archive directory ownership without following symlinks
+  ansible.builtin.stat:
+    path: "{{ application.destination }}"
+    follow: false
+  register: upstream_installed_directory
+
+- name: Inspect the archive ownership marker without following symlinks
+  ansible.builtin.stat:
+    path: "{{ application.destination }}/.workstation-bootstrap.json"
+    follow: false
+  register: upstream_installed_marker
+  when: upstream_installed_directory.stat.isdir | default(false)
+
+- name: Reconcile command launchers only for repository-owned archives
+  when:
+    - upstream_installed_directory.stat.isdir | default(false)
+    - upstream_installed_marker.stat.isreg | default(false)
+  block:
+    - name: Create user command directory
+      ansible.builtin.file:
+        path: "{{ applications_bin_dir }}"
+        state: directory
+      when: application.launchers | default([]) | length > 0
+
+    - name: Install missing launchers while preserving existing files and symlinks
+      ansible.builtin.include_tasks: upstream_launcher.yml
+      loop: "{{ application.launchers | default([]) }}"
+      loop_control:
+        loop_var: upstream_launcher
+        label: "{{ upstream_launcher.name }}"

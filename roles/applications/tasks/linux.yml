@@ -12,3 +12,13 @@
   loop_control:
     loop_var: application
     label: "{{ application.name }}"
+  when: application.architectures is not defined or ansible_facts.architecture in application.architectures
+
+- name: Report applications without an upstream build for this Linux architecture
+  ansible.builtin.debug:
+    msg: "{{ application.name }} supports {{ application.architectures | join(', ') }}; skipping {{ ansible_facts.architecture }}."
+  loop: "{{ category_apps.apps | default([]) }}"
+  loop_control:
+    loop_var: application
+    label: "{{ application.name }}"
+  when: application.architectures is defined and ansible_facts.architecture not in application.architectures

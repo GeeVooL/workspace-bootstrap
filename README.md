@@ -5,7 +5,8 @@ setup installs VS Code, Zed, Typora, 1Password, and fonts on macOS and supported
 Fork, Little Snitch, and Apple container on supported Macs, and configures Fish, Starship, fzf, zoxide, and optional
 Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS.
 Linux CLI prerequisites are still installed separately; Ghostty, Snap setup, Flatpak, and Flathub are managed.
-Xcode and Apple Command Line Tools are available on macOS.
+Xcode and Apple Command Line Tools are available on macOS. Android device/development
+tools are available on macOS and Linux, using official upstream downloads on Linux.
 
 ## Structure
 
@@ -166,7 +167,11 @@ and `editors` contains VS Code and Zed on both platforms. `writing` contains Typ
 on both platforms; `security` contains 1Password on both platforms and Little Snitch on macOS.
 `fonts` contains JetBrains Mono and JetBrains Mono Nerd Font on both platforms.
 `desktop` enables Flatpak and Flathub on Linux. `apple_development` contains Xcode
-and Apple Command Line Tools on macOS. Apple container is skipped
+and Apple Command Line Tools on macOS. `android_development` installs Android Platform
+Tools, Android Command-line Tools, Temurin Java, scrcpy, JADX, and Oh My Android
+on macOS. On Linux it installs Android Studio, Android Studio for Platform, SDK tools,
+JADX, scrcpy, and Temurin from upstream. Oh My Android requires Apple Silicon and
+macOS 26+. Apple container is skipped
 on Intel Macs and macOS versions below 26. `utilities` also installs Ghostty on
 macOS and supported Linux setups. Linux CLI utilities remain unmanaged.
 Excluding a category skips installation;
@@ -204,7 +209,8 @@ false or missing approval is skipped before discovery, downloads, and installati
 Category selections and exclusions still apply. This filters application installation;
 it does not uninstall existing apps or change terminal configuration and Fisher plugins.
 
-The current catalog marks all apps except Fork, Typora, Little Snitch, 1Password, Xcode, and Apple Command Line Tools as permitted, according to this
+The current catalog marks all apps except Fork, Typora, Little Snitch, 1Password, Xcode,
+Apple Command Line Tools, and Oh My Android as permitted, according to this
 repository's workplace policy. These labels record approval, not a licensing determination.
 New apps require explicit approval to be included in workplace mode.
 
@@ -240,6 +246,9 @@ applications_catalog:
 Fill the lists with the packages you want; empty or omitted platform entries do
 nothing and require no package manager. Fork has no official Linux release.
 Catalog overrides replace the dictionary, so supply the complete desired catalog.
+`apps` entries may set `architectures` to skip unsupported CPUs with an explanatory
+message. macOS entries may also set `minimum_macos_version`. Homebrew casks may use fully
+qualified `owner/tap/token` names; installed cask tokens are recognized on reruns.
 
 ### Snap setup
 
@@ -312,8 +321,9 @@ ansible-playbook applications.yml --ask-become-pass -e '{"applications_enabled_c
   archive, verifies its detached signature against the published signing fingerprint
   in an isolated keyring, then runs the vendor integration script under `/opt/1Password`.
   The role supplies the standard desktop-menu directory required by the vendor script.
-  An incomplete-install marker permits retries of its own failed installations;
-  an existing unmarked installation directory is preserved.
+  An incomplete-install marker permits retries of its own failed installations,
+  even when the application command is already discoverable. An existing unmarked
+  installation directory is preserved.
   See [1Password's Linux installation instructions](https://support.1password.com/install-linux/).
 - **Fonts** (`fonts`, workplace permitted): JetBrains Mono and JetBrains Mono Nerd Font
   use Homebrew casks on macOS. Linux extracts upstream archives into
@@ -329,9 +339,10 @@ ansible-playbook applications.yml --ask-become-pass -e '{"applications_enabled_c
 - **Xcode + Command Line Tools** (`apple_development`, macOS only, not workplace
   permitted): checks the selected developer directory for a compiler. If missing,
   requests [Apple's interactive installer](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools)
-  and stops with instructions to complete it and rerun. An existing Xcode toolchain
-  satisfies this check. Xcode is installed through Homebrew's `mas` CLI using App
-  Store ID `497799835`; sign into the App Store and obtain Xcode with your Apple
+  and stops with instructions to complete it and rerun. Both standalone Command Line
+  Tools and Xcode's default toolchain compiler layout satisfy this check. Xcode is
+  installed through Homebrew's `mas` CLI using App Store ID `497799835`; sign into
+  the App Store and obtain Xcode with your Apple
   Account first, as required by [mas](https://github.com/mas-cli/mas). First-launch
   setup and license acceptance remain interactive. The selected developer directory
   is not changed.
@@ -340,6 +351,163 @@ Homebrew itself requires Command Line Tools. On a fresh Mac, run only
 `apple_development` first, complete Apple's installer if prompted, and rerun before
 running the full catalog. Workplace filtering skips the explicit Apple tools entries;
 it does not remove Homebrew's prerequisites or tools already installed.
+
+### Android devices and emulators (macOS)
+
+The `android_development` category is enabled in personal and workplace modes.
+All Android tools and their installation prerequisites are workplace-permitted
+except Oh My Android, which is included only in personal mode. It installs:
+
+- [Android Platform Tools](https://formulae.brew.sh/cask/android-platform-tools):
+  `adb` for USB/Wi-Fi debugging, logs, APK installation, file transfer, and shell
+  access; `fastboot` for supported devices in bootloader mode.
+- [scrcpy](https://github.com/Genymobile/scrcpy): screen mirroring and control of
+  physical devices from the Mac.
+- [Android Command-line Tools](https://formulae.brew.sh/cask/android-commandlinetools):
+  `sdkmanager`, `avdmanager`, and other SDK utilities, without Android Studio.
+- `temurin`: the Java runtime/JDK required by Android Command-line Tools, as
+  recommended by the Homebrew cask. Its macOS package installer may request an
+  administrator password.
+- [JADX](https://formulae.brew.sh/formula/jadx): APK/resources inspection and Java
+  decompilation. The `jadx` formula includes both `jadx` and `jadx-gui`; launch the
+  graphical interface with `jadx-gui`. Homebrew also installs its OpenJDK dependency.
+- [Oh My Android](https://github.com/ateymoori/oh-my-android): a native GUI for
+  physical-device and emulator testing, installed from the author's
+  `ateymoori/tap/oh-my-android` cask. Requires Apple Silicon and macOS 26 or later;
+  unsupported Macs skip this app while installing the other Android tools.
+  Existing app bundles are preserved. The app uses the command-line SDK above;
+  emulator packages still need separate installation. MCP integration is optional
+  and is not configured by this playbook.
+
+Install only this category:
+
+```sh
+ansible-playbook applications.yml -e '{"applications_enabled_categories": ["android_development"]}' --check --diff
+ansible-playbook applications.yml -e '{"applications_enabled_categories": ["android_development"]}'
+```
+
+Homebrew exposes `adb`, `fastboot`, `scrcpy`, `sdkmanager`, and `avdmanager` in its `bin` directory; run
+`shell-paths.yml` if Homebrew is not already on your shell's PATH. See below for Linux.
+
+For a physical device, enable Developer options and USB debugging, connect a
+data-capable USB cable, unlock the device, and accept its RSA authorization prompt.
+[macOS needs no additional USB driver](https://developer.android.com/studio/run/device).
+Then use:
+
+```sh
+adb devices -l
+adb -d shell
+adb -d logcat
+adb -d install /path/to/app.apk
+scrcpy
+```
+
+`unauthorized` means the device still needs authorization. With several devices,
+use `adb -s SERIAL ...` or `scrcpy -s SERIAL`. For wireless debugging on Android 11+,
+enable Wireless debugging, select pairing by code, and run `adb pair IP:PAIRING_PORT`.
+Enter the displayed code, then use `adb connect IP:DEBUGGING_PORT` if needed;
+the pairing and debugging ports can differ. Both devices must be on the same network.
+Bootloader access varies by vendor; installing these tools does not unlock or flash
+a device.
+
+The cask's default SDK root is `$(brew --prefix)/share/android-commandlinetools`.
+Use [sdkmanager](https://developer.android.com/tools/sdkmanager) to inspect available
+packages and review licenses:
+
+```sh
+sdkmanager --list
+sdkmanager --licenses
+# Optional emulator binaries:
+sdkmanager --install "emulator"
+```
+
+Install the SDK Platform and Build-Tools versions required by your project using
+the quoted package IDs from `sdkmanager --list`. For emulators, also install a
+compatible system-image package (ARM64 on Apple Silicon, x86_64 on Intel), then
+create a device with `avdmanager create avd --name dev-phone --package "SYSTEM_IMAGE_ID"`,
+replacing `SYSTEM_IMAGE_ID` with that exact package ID. Launch it with
+`"$(brew --prefix)/share/android-commandlinetools/emulator/emulator" -avd dev-phone`.
+Google now documents `android sdk` as the successor to `sdkmanager`; the cask still
+includes `sdkmanager` and `avdmanager` for these commands.
+
+SDK licenses, additional SDK downloads, and virtual-device creation remain manual;
+this playbook does not provision an emulator. NDK and CMake are only needed for
+projects with native code. Homebrew owns the standalone Platform Tools; installing
+`platform-tools` with `sdkmanager` creates a separate copy. Update each through its
+owning manager and check `command -v adb` if versions differ. No `ANDROID_HOME` or
+`JAVA_HOME` is overwritten. An existing `JAVA_HOME` must point to a compatible JDK;
+project build JDK requirements may differ from those of the SDK utilities. Use
+`--sdk_root=PATH` to select another SDK root, and `shell_extra_bin_paths` if you want
+its `emulator` directory on PATH.
+
+### Android tools on Linux
+
+The same `android_development` category installs the following from their official
+upstream sources, without Android packages from Ubuntu/Fedora repositories,
+community PPAs/COPRs, Snap, or Flatpak:
+
+| Component | Source |
+| --- | --- |
+| Android Studio | Current stable Linux archive and SHA-256 from [Google's download page](https://developer.android.com/studio) |
+| Android Studio for Platform (ASfP) | [Google's stable `asfp-current-linux.deb`](https://developer.android.com/studio/platform/install) |
+| ADB and fastboot | Current stable Platform Tools from Google's SDK repository metadata |
+| SDK command-line tools | Current Linux archive and SHA-256 from Google's download page |
+| JADX, including `jadx-gui` | Latest stable release of [skylot/jadx](https://github.com/skylot/jadx/releases) |
+| scrcpy | Latest stable Linux static build from [Genymobile/scrcpy](https://github.com/Genymobile/scrcpy/blob/master/doc/linux.md) |
+| Temurin JDK 25 LTS | Current Eclipse Adoptium release from its official API |
+
+New installations resolve current upstream versions at apply time. Existing
+installations are preserved, not automatically upgraded. Google publishes SHA-1
+for Platform Tools; other archive downloads verify published SHA-256 digests.
+ASfP's persistent `.deb` is downloaded over Google's HTTPS endpoint, which does
+not publish a companion checksum. No downloads or metadata requests occur in
+check mode. The distro package manager installs only archive prerequisites
+(`tar`, `unzip`, and `xz`/`xz-utils`); it supplies no Android application binaries.
+
+Install with:
+
+```sh
+ansible-playbook applications.yml --ask-become-pass -e '{"applications_enabled_categories": ["android_development"]}'
+ansible-playbook shell-paths.yml
+```
+
+Archives are installed for the current user under
+`~/.local/share/workstation-bootstrap/android` (`applications_android_dir`). Launchers
+in `~/.local/bin` include `android-studio`, `asfp`, `adb`, `fastboot`, `sdkmanager`,
+`avdmanager`, `jadx`, `jadx-gui`, and `scrcpy`. The dedicated Java runtime is selected
+only inside the SDK/JADX launchers, leaving the shell's `JAVA_HOME` unchanged;
+`applications_android_java_home` changes its destination. Existing destination
+files, directories, and launcher symlinks are preserved. Existing bootstrap-owned
+archives regain missing launchers on reruns without downloading the payload again.
+An incomplete payload destination fails with instructions instead of overwriting user data. Ordinary desktop Linux
+runtime libraries and glibc 2.31+ are required for the IDEs.
+
+**Fedora ASfP:** the installer extracts the IDE payload from Google's `.deb` and
+places it in the user installation directory. It does not run Debian maintainer
+scripts, convert packages, or modify a package database. Google's post-install
+script normally moves the same payload from `/tmp` into `/opt`; the extracted
+IDE includes its own Java runtime. This portable extraction route also works on
+Debian/Ubuntu, but differs from Google's documented `apt install ./asfp-current-linux.deb`
+method. Launch with `asfp`. GUI operation on a real Fedora workstation has not been
+validated; the installation path is covered by archive fixtures. The IDEs can create
+desktop-menu entries through **Tools > Create Desktop Entry** after first launch.
+
+Google's Linux IDEs and the selected upstream scrcpy binary require **x86-64**.
+On ARM64, this category installs Temurin and JADX and reports the unsupported tools
+as skipped; it does not substitute community ARM builds. Oh My Android is macOS-only.
+
+The SDK root is `~/.local/share/workstation-bootstrap/android/sdk`. Select this
+location in Android Studio to share the installed tools, then use the setup wizard
+or SDK Manager for project-specific platforms, build tools, emulator binaries, and
+system images. SDK licenses and AVD creation remain interactive. ASfP installation
+does not download AOSP, configure its build dependencies, or create Cuttlefish VMs.
+
+For USB access, Linux additionally needs suitable udev rules and user permissions;
+see [Google's device setup instructions](https://developer.android.com/studio/run/device).
+This category does not change group membership, USB rules, or KVM permissions.
+Wireless debugging with `adb pair` and `adb connect` avoids USB permission setup.
+If an existing `~/.local/bin` launcher was preserved, use the executables under the
+installation directory or reconcile that launcher to select the new upstream tools.
 
 ### Typora and Little Snitch
 
@@ -530,7 +698,9 @@ and marked on the next run. Other existing contents and symlinks at those filena
 are preserved and reported, so a filename collision does not overwrite user settings.
 The same ownership rule applies to the generated Fish and POSIX PATH files.
 Bash/Zsh startup edits replace only this repository's marked block and back up the
-file, preserving surrounding content. Existing directory modes are not changed.
+file, preserving surrounding content. Symlinked and nonregular startup files are
+left untouched. Ghostty launch configuration is left untouched if any discovered
+configuration path is a symlink or nonregular file. Existing directory modes are not changed.
 Other Fish files, including `config.fish`, remain untouched. Fisher continues to
 manage and repair the required plugin code using its tracked-file metadata.
 
@@ -782,3 +952,21 @@ Snap was absent. GUI launches, macOS package installation, App Store operations,
 and live Apple Container upgrades were not exercised. Package-manager dependencies
 and vendor post-install hooks remain upstream behavior, beyond repository-managed
 configuration. The local Mac was used only for isolated fixtures and container hosting.
+
+Run `python3 tests/check-android.py` for offline macOS Android package selection,
+platform guards, existing bundle preservation, fully qualified cask names, and
+repeat-run checks. Run `python3 tests/check-android-linux.py` on Linux with Ansible,
+GNU tar, gzip, xz, and unzip for upstream archive/checksum, ASfP payload extraction,
+launcher argument handling, preservation, check mode, and repeat-run tests. These
+use local fixture payloads; they do not launch the real Android GUIs.
+
+The Android suites passed on macOS and Fedora 44 ARM64 in a temporary Apple
+Container. Linux x86-64 routing used simulated facts and tiny fixture executables;
+real upstream metadata resolution and the ASfP Debian control/payload layout were
+checked separately. Real x86-64 GUI launches, USB devices, and KVM were not tested.
+
+Run `python3 tests/check-install-recovery.py` for offline archive launcher recovery
+checks, including check mode, argument forwarding, symlink and unmarked-payload
+preservation, and repeat-run idempotence. `tests/check-platform-apps.py` also tests
+ARM64 1Password recovery after its command becomes discoverable. On macOS that
+fixture substitutes native tar for Ansible's GNU tar extraction backend.

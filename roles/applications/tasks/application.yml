@@ -20,6 +20,16 @@
        (application.paths | default([])) }}
   register: application_locations
 
+- name: Inspect the ARM64 1Password incomplete-install marker
+  ansible.builtin.stat:
+    path: "{{ applications_onepassword_dir }}/.workstation-bootstrap-installing"
+    follow: false
+  register: application_incomplete_marker
+  when:
+    - application.installer == 'onepassword'
+    - ansible_facts.system == 'Linux'
+    - ansible_facts.architecture == 'aarch64'
+
 - name: Determine whether application is already installed
   ansible.builtin.set_fact:
     application_present: >-
@@ -40,5 +50,11 @@
 - name: Install missing application using the selected installer
   ansible.builtin.include_tasks: "{{ application.installer }}.yml"
   when:
-    - not application_present or application.installer in ['flatpak', 'command_line_tools', 'snapd']
-    - application.installer in ['dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools', 'snapd']
+    - not application_present or application.installer in ['flatpak', 'command_line_tools', 'snapd'] or (application_incomplete_marker.stat.isreg | default(false))
+    - application.installer in ['dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools', 'snapd', 'upstream_archive']
+
+- name: Reconcile launchers for an existing repository-owned archive
+  ansible.builtin.include_tasks: upstream_launchers.yml
+  when:
+    - application.installer == 'upstream_archive'
+    - application_present

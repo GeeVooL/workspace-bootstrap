@@ -211,6 +211,149 @@ applications_catalog:
           installer: flatpak
           remote: flathub
           remote_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+  android_development:
+    macos:
+      formulae:
+        - {name: scrcpy, workplace_permitted: true}
+        - {name: jadx, workplace_permitted: true}
+      casks:
+        - {name: android-platform-tools, workplace_permitted: true}
+        - {name: android-commandlinetools, workplace_permitted: true}
+        - {name: temurin, workplace_permitted: true}
+      apps:
+        - name: Oh My Android
+          id: oh-my-android
+          workplace_permitted: false
+          commands: []
+          bundle: Oh My Android.app
+          installer: homebrew
+          cask: ateymoori/tap/oh-my-android
+          architectures: [arm64]
+          minimum_macos_version: '26'
+    linux:
+      # OS extraction prerequisites only; Android applications come from upstream.
+      packages:
+        - {name: tar, workplace_permitted: true}
+        - {name: unzip, workplace_permitted: true}
+        - {name: "{{ 'xz-utils' if ansible_facts.os_family == 'Debian' else 'xz' }}", workplace_permitted: true}
+      apps:
+        - name: Temurin Java for Android tools
+          id: android-java
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_android_java_home }}/bin/java"]
+          architectures: [x86_64, aarch64]
+          installer: upstream_archive
+          destination: "{{ applications_android_java_home }}"
+          metadata_kind: adoptium
+          metadata_url: "https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture={{ 'x64' if ansible_facts.architecture == 'x86_64' else 'aarch64' }}&image_type=jdk&os=linux&vendor=eclipse"
+          archive_format: tar.gz
+          archive_root: 'jdk-*'
+          executables: [bin/java]
+        - name: Android Studio
+          id: android-studio
+          workplace_permitted: true
+          commands: [android-studio]
+          paths: ["{{ applications_android_dir }}/studio/bin/studio", /opt/android-studio/bin/studio, /opt/android-studio/bin/studio.sh]
+          architectures: [x86_64]
+          installer: upstream_archive
+          destination: "{{ applications_android_dir }}/studio"
+          metadata_kind: google_page
+          metadata_url: https://developer.android.com/studio
+          asset_pattern: 'android-studio-[a-zA-Z0-9._-]+-linux\.tar\.gz'
+          archive_format: tar.gz
+          archive_root: android-studio
+          executables: [bin/studio]
+          launchers:
+            - {name: android-studio, path: bin/studio}
+        - name: Android Studio for Platform
+          id: asfp
+          workplace_permitted: true
+          commands: [asfp]
+          paths: ["{{ applications_android_dir }}/asfp/bin/studio.sh", /opt/android-studio-for-platform/bin/studio.sh]
+          architectures: [x86_64]
+          installer: upstream_archive
+          destination: "{{ applications_android_dir }}/asfp"
+          metadata_kind: direct
+          metadata_url: https://dl.google.com/android/asfp/asfp-current-linux.deb
+          archive_format: deb
+          archive_parent: tmp
+          archive_root: 'android-studio-for-platform-*'
+          executables: [bin/studio, bin/studio.sh]
+          launchers:
+            - {name: asfp, path: bin/studio}
+        - name: Android Platform Tools
+          id: android-platform-tools
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_android_dir }}/sdk/platform-tools/adb"]
+          architectures: [x86_64]
+          installer: upstream_archive
+          destination: "{{ applications_android_dir }}/sdk/platform-tools"
+          metadata_kind: google_sdk
+          metadata_url: https://dl.google.com/android/repository/repository2-3.xml
+          asset_pattern: platform-tools
+          archive_format: zip
+          archive_root: platform-tools
+          executables: [adb, fastboot]
+          launchers:
+            - {name: adb, path: adb}
+            - {name: fastboot, path: fastboot}
+        - name: Android Command-line Tools
+          id: android-commandlinetools
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_android_dir }}/sdk/cmdline-tools/latest/bin/sdkmanager"]
+          architectures: [x86_64]
+          installer: upstream_archive
+          destination: "{{ applications_android_dir }}/sdk/cmdline-tools/latest"
+          java_home: "{{ applications_android_java_home }}"
+          metadata_kind: google_page
+          metadata_url: https://developer.android.com/studio
+          asset_pattern: 'commandlinetools-linux-[0-9]+_latest\.zip'
+          archive_format: zip
+          archive_root: cmdline-tools
+          executables: [bin/sdkmanager, bin/avdmanager]
+          launchers:
+            - {name: sdkmanager, path: bin/sdkmanager}
+            - {name: avdmanager, path: bin/avdmanager}
+        - name: JADX
+          id: jadx
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_android_dir }}/jadx/bin/jadx"]
+          architectures: [x86_64, aarch64]
+          installer: upstream_archive
+          destination: "{{ applications_android_dir }}/jadx"
+          java_home: "{{ applications_android_java_home }}"
+          metadata_kind: github
+          metadata_url: https://api.github.com/repos/skylot/jadx/releases/latest
+          asset_pattern: 'jadx-[0-9.]+\.zip'
+          archive_format: zip
+          archive_root: '.'
+          executables: [bin/jadx, bin/jadx-gui]
+          launchers:
+            - {name: jadx, path: bin/jadx}
+            - {name: jadx-gui, path: bin/jadx-gui}
+        - name: scrcpy
+          id: scrcpy
+          workplace_permitted: true
+          commands: []
+          paths: ["{{ applications_android_dir }}/scrcpy/scrcpy"]
+          architectures: [x86_64]
+          installer: upstream_archive
+          destination: "{{ applications_android_dir }}/scrcpy"
+          metadata_kind: github
+          metadata_url: https://api.github.com/repos/Genymobile/scrcpy/releases/latest
+          asset_pattern: 'scrcpy-linux-x86_64-v[0-9.]+\.tar\.gz'
+          archive_format: tar.gz
+          archive_root: 'scrcpy-linux-x86_64-*'
+          executables: [scrcpy]
+          launchers:
+            - name: scrcpy
+              path: scrcpy
+              environment:
+                ADB: "{{ applications_android_dir }}/sdk/platform-tools/adb"
   apple_development:
     macos:
       apps:
