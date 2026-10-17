@@ -8,6 +8,7 @@ Usage: ./bootstrap personal|workplace [options] [-- ANSIBLE_OPTIONS...]
 
   personal              Include all selected applications
   workplace             Include only workplace_permitted applications
+  --dryrun              Preview changes and differences (--check --diff)
   --check               Preview changes without applying them
   --diff                Show configuration differences
   --apps-only           Run applications.yml
@@ -42,6 +43,7 @@ options=()
 excluded=''
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --dryrun) options+=(--check --diff); shift ;;
         --check|--diff) options+=("$1"); shift ;;
         --apps-only|--terminal-only)
             [ "$playbook" = site.yml ] || fail 'Choose only one of --apps-only and --terminal-only.'

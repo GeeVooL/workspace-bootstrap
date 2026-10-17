@@ -43,6 +43,8 @@ sys.exit(int(os.environ.get('WRAPPER_EXIT', '0')))
             assert call['config'] == str(checkout / 'ansible.cfg')
             assert call['args'] == ['site.yml', '--check', '--diff', '--ask-become-pass', '-e',
                                      '{"workplace_only":' + ('true' if profile == 'workplace' else 'false') + '}']
+            dryrun = run([profile, '--dryrun'], WRAPPER_OS=platform)
+            assert dryrun == call, '--dryrun must behave exactly like --check --diff'
     call = run(['personal', '--apps-only', '--exclude', 'writing', '--exclude', 'apple_development', '--no-ask-become-pass'])
     assert call['args'][0] == 'applications.yml' and '--ask-become-pass' not in call['args']
     assert json.loads(call['args'][2]) == {'applications_excluded_categories': ['writing', 'apple_development']}

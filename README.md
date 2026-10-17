@@ -104,11 +104,13 @@ The `bootstrap` wrapper provides personal and workplace profiles on both macOS a
 Linux. Run as your normal user with Ansible available on PATH:
 
 ```sh
-./bootstrap personal --check --diff  # preview a personal Mac or Linux laptop
+./bootstrap personal --dryrun        # preview a personal Mac or Linux laptop
 ./bootstrap personal                 # apply
-./bootstrap workplace --check --diff # preview a workplace laptop
+./bootstrap workplace --dryrun       # preview a workplace laptop
 ./bootstrap workplace                # apply only workplace-permitted apps
 ```
+
+`--dryrun` combines `--check` and `--diff`; both flags also remain available separately.
 
 The default runs `site.yml` (applications, then terminal configuration). Personal
 mode explicitly sets `workplace_only=false`; workplace mode sets it to `true`.
