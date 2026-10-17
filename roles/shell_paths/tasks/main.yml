@@ -1,6 +1,13 @@
 ---
 - name: Configure shell_paths
   block:
+    - name: Load shared executable paths
+      ansible.builtin.include_role:
+        name: executable_paths
+        public: true
+      vars:
+        executable_paths_home: "{{ shell_home }}"
+
     - name: Require macOS or Linux and a normal user
       ansible.builtin.assert:
         that:
@@ -13,7 +20,7 @@
       args:
         executable: /bin/sh
       environment:
-        PATH: "{{ (shell_extra_bin_paths + [ansible_facts.env.PATH] + shell_standard_bin_paths) | join(':') }}"
+        PATH: "{{ (workstation_search_directories + [ansible_facts.env.PATH] + shell_standard_bin_paths) | join(':') }}"
       register: shell_brew_lookup
       changed_when: false
       failed_when: shell_brew_lookup.rc not in [0, 1]
@@ -34,7 +41,7 @@
 
     - name: Select persistent executable directories
       ansible.builtin.set_fact:
-        workstation_bin_paths: "{{ (shell_extra_bin_paths + [shell_home ~ '/.local/bin'] + ([shell_brew_prefix.stdout ~ '/bin', shell_brew_prefix.stdout ~ '/sbin'] if shell_brew_prefix.stdout is defined else shell_standard_bin_paths)) | unique | list }}"
+        workstation_bin_paths: "{{ ((workstation_resolved_bin_paths | default([])) + workstation_search_directories + ([shell_brew_prefix.stdout ~ '/bin', shell_brew_prefix.stdout ~ '/sbin'] if shell_brew_prefix.stdout is defined else shell_standard_bin_paths)) | unique | list }}"
 
     - name: Require absolute executable directories without PATH separators
       ansible.builtin.assert:

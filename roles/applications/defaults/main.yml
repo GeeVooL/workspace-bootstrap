@@ -7,7 +7,7 @@ workplace_only: false
 homebrew_search_path: "{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin"
 applications_home: "{{ ansible_facts.env.HOME }}"
 applications_bin_dir: "{{ applications_home }}/.local/bin"
-applications_search_path: "{{ applications_bin_dir }}:{{ ansible_facts.env.PATH }}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin:/var/lib/snapd/snap/bin"
+applications_search_path: "{{ ((workstation_resolved_bin_paths | default([])) + workstation_search_directories + [applications_bin_dir] + ansible_facts.env.PATH.split(':') + ['/usr/bin', '/bin']) | unique | join(':') }}"
 applications_macos_dirs: ["/Applications", "{{ applications_home }}/Applications"]
 applications_macos_install_dir: /Applications
 applications_copr_repo_dir: /etc/yum.repos.d

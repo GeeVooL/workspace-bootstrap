@@ -1,9 +1,31 @@
 # Managed by Workstation Bootstrap. Shared by Bash and Zsh.
+_workstation_bootstrap_prepend_path() {
+    [ -d "$1" ] || return 0
+    _workstation_path_new=$1
+    _workstation_path_tail=${PATH-}
+    if [ -n "$_workstation_path_tail" ]; then
+        while :; do
+            case $_workstation_path_tail in
+                *:*)
+                    _workstation_path_entry=${_workstation_path_tail%%:*}
+                    _workstation_path_tail=${_workstation_path_tail#*:}
+                    _workstation_path_more=1
+                    ;;
+                *)
+                    _workstation_path_entry=$_workstation_path_tail
+                    _workstation_path_more=0
+                    ;;
+            esac
+            if [ "$_workstation_path_entry" != "$1" ]; then
+                _workstation_path_new=$_workstation_path_new:$_workstation_path_entry
+            fi
+            [ "$_workstation_path_more" = 1 ] || break
+        done
+    fi
+    export PATH=$_workstation_path_new
+}
 {% for directory in workstation_bin_paths | reverse %}
-if [ -d {{ directory | quote }} ]; then
-    case ":${PATH-}:" in
-        *:{{ directory | quote }}:*) ;;
-        *) export PATH={{ directory | quote }}${PATH:+":$PATH"} ;;
-    esac
-fi
+_workstation_bootstrap_prepend_path {{ directory | quote }}
 {% endfor %}
+unset -f _workstation_bootstrap_prepend_path
+unset _workstation_path_new _workstation_path_tail _workstation_path_entry _workstation_path_more

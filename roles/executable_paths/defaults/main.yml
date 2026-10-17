@@ -1,0 +1,10 @@
+---
+executable_paths_home: "{{ ansible_facts.user_dir | default(ansible_facts.env.HOME) }}"
+workstation_extra_bin_paths: []
+workstation_executable_overrides: {}
+workstation_cargo_home: "{{ ansible_facts.env.CARGO_HOME | default(executable_paths_home ~ '/.cargo', true) }}"
+workstation_tool_minimum_versions:
+  fish: '4.0.0'
+  fzf: '0.33.0'
+  fd: '8.5.0'
+  bat: '0.16.0'

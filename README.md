@@ -3,8 +3,9 @@
 Ansible configuration for development workstations on macOS and Linux. The current
 setup installs VS Code, Zed, Typora, 1Password, and fonts on macOS and supported Linux distributions,
 Fork, Little Snitch, and Apple container on supported Macs, and configures Fish, Starship, fzf, zoxide, and optional
-Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS.
-Linux CLI prerequisites are still installed separately; Ghostty, Snap setup, Flatpak, and Flathub are managed.
+Ghostty integration. The `utilities` application category installs terminal prerequisites on macOS
+and mise on macOS and Linux. Other Linux CLI prerequisites are still installed separately;
+Ghostty, Snap setup, Flatpak, and Flathub are managed.
 Xcode and Apple Command Line Tools are available on macOS. Android device/development
 tools are available on macOS and Linux, using official upstream downloads on Linux.
 
@@ -34,6 +35,8 @@ roles/
       macos.yml
       linux.yml
   managed_config/               # ownership checks and backed-up managed-file updates
+  executable_paths/             # shared standalone, Cargo, and platform directories
+  executable_discovery/         # CLI health/version checks independent of installer
   terminal/
     defaults/main.yml
     tasks/main.yml
@@ -173,7 +176,7 @@ on macOS. On Linux it installs Android Studio, Android Studio for Platform, SDK 
 JADX, scrcpy, and Temurin from upstream. Oh My Android requires Apple Silicon and
 macOS 26+. Apple container is skipped
 on Intel Macs and macOS versions below 26. `utilities` also installs Ghostty on
-macOS and supported Linux setups. Linux CLI utilities remain unmanaged.
+macOS and supported Linux setups. Linux CLI utilities other than mise remain unmanaged.
 Excluding a category skips installation;
 it does not uninstall existing applications. `applications_setup_categories` lists categories
 that run first when selected; the inventory sets it to `[package_managers]`.
@@ -665,12 +668,18 @@ Linux after installing utilities through the platform's package manager:
 ansible-playbook shell-paths.yml
 ```
 
-It adds `~/.local/bin` to PATH. On macOS, it also adds the detected Homebrew
-prefix's `bin` and `sbin` directories, falling back to `/opt/homebrew/bin` and
-`/usr/local/bin` when Homebrew is absent. Linux adds `/usr/local/bin` and does
-not discover or manage Homebrew. Nonexistent directories are ignored. Additional
-installation directories can be supplied using `shell_extra_bin_paths`.
-Existing PATH entries are retained without adding duplicates.
+Application discovery and shell setup share directories for `~/.local/bin`,
+`$CARGO_HOME/bin` (default `~/.cargo/bin`), and `~/.fzf/bin`. Both include
+`/usr/local/bin` and `/usr/local/sbin`; macOS includes the standard Apple Silicon
+Homebrew directories, while shell setup also discovers a custom Homebrew prefix.
+Linux includes Snap executable directories and does not query Homebrew.
+Nonexistent directories are ignored by the generated shell snippets. Additional
+installation directories can be supplied using `workstation_extra_bin_paths` or
+`shell_extra_bin_paths`. Explicit executable overrides contribute their directories;
+known standalone locations discovered during a full run also feed into shell setup.
+Managed directories are moved to the front in the same order used for discovery,
+even when inherited PATH entries already contain them. Other entries are retained,
+and repeated sourcing does not duplicate managed directories.
 
 Fish loads `00-workstation-path.fish` before its tool integrations. Bash and Zsh
 source `workstation-bootstrap/path.sh` under `terminal_config_root` through managed
@@ -836,6 +845,10 @@ Pass overrides with `-e` or an Ansible variables file.
 | `shell_home` | Current user's home | Home for Bash startup files and `.local/bin`; override for temporary validation |
 | `shell_zdotdir` | Exported `ZDOTDIR` or `shell_home` | Directory for Zsh startup files |
 | `shell_extra_bin_paths` | `[]` | Additional absolute executable directories for all three shells |
+| `workstation_extra_bin_paths` | `[]` | Additional directories shared by application discovery and shell setup |
+| `workstation_cargo_home` | `$CARGO_HOME` or `~/.cargo` | Cargo installation root used for discovery and shell PATH |
+| `workstation_executable_overrides` | `{}` | Map CLI catalog IDs to explicit absolute executable paths |
+| `workstation_tool_minimum_versions` | Fish 4.0.0, fzf 0.33.0, fd 8.5.0, bat 0.16.0 | Shared requirements for application discovery and terminal prerequisites |
 
 Example using an existing Linux Ghostty configuration:
 
@@ -851,9 +864,66 @@ temporary directories.
 The optional mise snippet also checks `~/.local/bin/mise`; activation makes mise
 and its selected tools available in interactive Fish sessions and updates tools
 when changing directories. `terminal.yml` does not install mise, and the snippet
-does nothing when it is absent; `applications.yml` installs it by default on macOS.
+does nothing when it is absent.
+
+### Existing CLI installations
+
+CLI catalog entries use `cli: true`, an `id`, command names (including aliases),
+optional known `paths`, and an installer. Discovery accepts working installations
+regardless of their provider, including standalone scripts, Cargo, Homebrew, and
+system packages. The shared resolver checks executable files, runs a version probe
+from outside the project directory, and enforces minimum versions where required.
+It reports the selected path and other distinct installations. Symlinks to the same
+binary are deduplicated without changing the path used to invoke the executable.
+
+The first executable matching the command names and configured search order wins.
+A failing probe or an insufficient version stops the run with a diagnostic, preserving
+the existing installation. A missing tool uses its configured installer. A Homebrew
+receipt without an available CLI executable is reported as requiring repair.
+Existing installations are not automatically upgraded or migrated to another provider.
+For a custom location, set `workstation_extra_bin_paths` or an explicit override
+whose filename matches the primary command. Override directories take precedence;
+conflicting overrides/search paths stop with a diagnostic so a shell cannot silently
+select another binary:
+
+```yaml
+workstation_executable_overrides:
+  fish: /opt/custom-fish/bin/fish
+```
+
+On macOS this applies to mise, Fish, Git, Starship, fzf, zoxide, bat, fd, ripgrep,
+tree, jq, scrcpy, and JADX. The terminal role uses the same resolver on both platforms.
+GUI applications retain bundle-specific checks; SDK/JDK packages, fonts, and other
+plain `formulae`/`casks` lists retain package-based requirements. A single command
+does not establish that a complete SDK or a particular JDK distribution is installed.
+
+Fresh mise installs on macOS and Linux use its [official installer](https://mise.jdx.dev/installing-mise.html)
+from `https://mise.run`, matching upstream's recommended method. Existing mise
+installations are reused. The installer writes into a temporary directory; bootstrap
+checks the binary before publishing it to `applications_bin_dir/mise` (normally
+`~/.local/bin/mise`). Failed attempts are cleaned up, and the installer does not edit
+shell startup files. Check mode neither downloads nor runs it. A catalog `version`
+can pin the mise release through `MISE_VERSION`. Updates remain with the existing
+installation's manager (`mise self-update` for standalone installs).
+
+Homebrew `apps` entries accept either `formula` or `cask`. Starship and zoxide can be
+reused from their official scripts, while fresh macOS installs default to Homebrew.
+Rustup is not installed by this catalog; Cargo directory discovery supports existing
+Rust tools without introducing a Rust toolchain requirement.
 
 ## Development
+
+Run `python3 tests/check-executable-discovery.py` to validate external CLI discovery,
+aliases, duplicate installations, version requirements, and the Homebrew fallback.
+Run `python3 tests/check-mise-discovery.py` to validate standalone mise preservation
+and script installation/recovery with simulated macOS/Linux facts and a local fake
+installer. These suites use temporary fixtures and install no host packages.
+
+Run `python3 tests/check-mise-linux.py` as a normal user inside a disposable Linux
+container with Ansible, PyYAML, Fish, Bash, Zsh, curl, and CA certificates installed.
+This networked integration check runs the official mise installer into a temporary
+home, verifies clean check mode and repeat applies, preserves the existing binary,
+and checks discovery in interactive/login shells and noninteractive Fish.
 
 Syntax-check all entry points:
 
@@ -955,6 +1025,18 @@ load order, legacy filenames, included configuration, and repeat-run idempotence
 Ghostty checks cover unmarked-file preservation, marked-file backups, and creation
 of marked configurations. Editor checks also cover failed and invalid DMG copies,
 retry installation, and preservation of destinations appearing during publication.
+
+### CLI discovery container validation (2026-10-17)
+
+The executable-discovery, mise installer/recovery, shell-path, and bootstrap suites
+passed in disposable Ubuntu 26.04 ARM64 and Fedora 44 ARM64 containers as normal
+users. All four playbooks passed syntax checks with Ansible Core 2.20.1 (Ubuntu)
+and 2.20.7 (Fedora); shell checks used Fish 4.2.1 and 4.6.0 respectively.
+The networked mise test installed the real upstream 2026.10.11 Linux ARM64 binary,
+verified Fish/Bash/Zsh discovery, and reported zero changes on repeat apply and
+final check mode on both distributions. Homebrew behavior and installer failure
+recovery remain fixture-based. This validates CLI installation and shell paths;
+it does not exercise GUI applications or system services.
 
 ### Cross-platform audit (2026-10-08)
 

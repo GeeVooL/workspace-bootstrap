@@ -1,12 +1,39 @@
 ---
+- name: Load shared executable discovery paths
+  ansible.builtin.include_role:
+    name: executable_paths
+    public: true
+  vars:
+    executable_paths_home: "{{ applications_home }}"
+  when: workstation_search_directories is not defined
+
 - name: Validate application installer before discovery
   ansible.builtin.assert:
     that:
       - application is mapping
       - application.name is string
       - application.commands is sequence and application.commands is not string and application.commands is not mapping
-      - application.installer in (['homebrew', 'dmg', 'mas', 'command_line_tools'] if ansible_facts.system == 'Darwin' else ['native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'snapd', 'upstream_archive'])
+      - application.installer in (['homebrew', 'mise', 'dmg', 'mas', 'command_line_tools'] if ansible_facts.system == 'Darwin' else ['mise', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'snapd', 'upstream_archive'])
     fail_msg: "Invalid application definition or unsupported installer for this platform: {{ application }}"
+
+- name: Require exactly one Homebrew formula or cask
+  ansible.builtin.assert:
+    that: (application.formula is defined) != (application.cask is defined)
+    fail_msg: "Set either formula or cask for {{ application.name }}."
+  when: application.installer == 'homebrew'
+
+- name: Discover an existing CLI installation independently of its installer
+  ansible.builtin.include_role:
+    name: executable_discovery
+  vars:
+    executable_definition: "{{ application }}"
+    executable_search_path: "{{ applications_search_path }}"
+  when: application.cli | default(false) | bool
+
+- name: Remember CLI installation state
+  ansible.builtin.set_fact:
+    application_present: "{{ executable_result.status == 'ready' }}"
+  when: application.cli | default(false) | bool
 
 - name: Look for existing application commands
   ansible.builtin.shell: "command -v {{ item | quote }}"
@@ -19,6 +46,7 @@
   changed_when: false
   failed_when: application_commands.rc not in [0, 1, 127]
   check_mode: false
+  when: not (application.cli | default(false) | bool)
 
 - name: Check known installation locations
   ansible.builtin.stat:
@@ -29,6 +57,7 @@
        if ansible_facts.system == 'Darwin' and application.bundle is defined else
        (application.paths | default([])) }}
   register: application_locations
+  when: not (application.cli | default(false) | bool)
 
 - name: Inspect the ARM64 1Password incomplete-install marker
   ansible.builtin.stat:
@@ -48,10 +77,11 @@
   when: application.installer == 'script'
 
 - name: Determine whether application is already installed
+  when: not (application.cli | default(false) | bool)
   ansible.builtin.set_fact:
     application_present: >-
       {{ (application_commands.results | selectattr('rc', 'equalto', 0) | list | length > 0)
-         or (application_locations.results | selectattr('stat.exists') | selectattr('stat.executable', 'defined') | selectattr('stat.executable') | selectattr('stat.isreg') | list | length > 0) if application.installer == 'script' else
+         or (application_locations.results | selectattr('stat.exists') | selectattr('stat.executable', 'defined') | selectattr('stat.executable') | selectattr('stat.isreg') | list | length > 0) if application.installer == 'script' or (application.installer == 'homebrew' and application.formula is defined) else
          ((application_commands.results | selectattr('rc', 'equalto', 0) | list | length > 0)
          or (application_locations.results | selectattr('stat.exists') | list | length > 0)) }}
 
@@ -62,7 +92,7 @@
   loop: "{{ application_locations.results }}"
   loop_control:
     label: "{{ item.item }}"
-  when: not application_present and not item.stat.exists and application.installer != 'script'
+  when: not (application.cli | default(false) | bool) and not application_present and not item.stat.exists and application.installer != 'script'
   register: application_unresolved_locations
 
 - name: Preserve dangling installation paths
@@ -77,8 +107,8 @@
   ansible.builtin.include_role:
     name: homebrew
   vars:
-    macos_homebrew_formulae: []
-    macos_homebrew_casks: "{{ [application.cask] }}"
+    macos_homebrew_formulae: "{{ [application.formula] if application.formula is defined else [] }}"
+    macos_homebrew_casks: "{{ [application.cask] if application.cask is defined else [] }}"
   when:
     - ansible_facts.system == 'Darwin'
     - not application_present
@@ -88,7 +118,30 @@
   ansible.builtin.include_tasks: "{{ application.installer }}.yml"
   when:
     - not application_present or application.installer in ['flatpak', 'command_line_tools', 'snapd'] or (application_incomplete_marker.stat.isreg | default(false)) or (application_zed_pending.stat.exists | default(false))
-    - application.installer in ['dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools', 'snapd', 'upstream_archive']
+    - application.installer in ['mise', 'dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools', 'snapd', 'upstream_archive']
+
+- name: Report a Homebrew receipt without a usable CLI executable
+  ansible.builtin.assert:
+    that: macos_missing_formulae | length > 0
+    fail_msg: "Homebrew records {{ application.formula }} as installed, but its executable is unavailable. Repair its links or configure workstation_executable_overrides."
+  when:
+    - application.cli | default(false) | bool
+    - application.installer == 'homebrew'
+    - application.formula is defined
+    - not application_present
+    - ansible_check_mode
+
+- name: Verify a newly installed CLI executable
+  ansible.builtin.include_role:
+    name: executable_discovery
+  vars:
+    executable_definition: "{{ application }}"
+    executable_search_path: "{{ applications_search_path }}"
+    executable_required: true
+  when:
+    - application.cli | default(false) | bool
+    - not application_present
+    - not ansible_check_mode
 
 - name: Reconcile launchers for an existing repository-owned archive
   ansible.builtin.include_tasks: upstream_launchers.yml

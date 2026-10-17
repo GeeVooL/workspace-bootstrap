@@ -1,0 +1,40 @@
+---
+- name: Discover and probe existing executable
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/files/discover.py"
+      - "{{ executable_definition | combine({'search_path': executable_search_path, 'override': workstation_executable_overrides[executable_definition.id] | default(''), 'minimum_version': executable_definition.minimum_version | default(workstation_tool_minimum_versions[executable_definition.id] | default(''))}) | to_json }}"
+  register: executable_probe
+  changed_when: false
+  check_mode: false
+
+- name: Read executable discovery result
+  ansible.builtin.set_fact:
+    executable_result: "{{ executable_probe.stdout | from_json }}"
+
+- name: Report selected executable and other installations
+  ansible.builtin.debug:
+    msg: "{{ executable_definition.name | default(executable_definition.id) }}: {{ executable_result }}"
+
+- name: Preserve unusable installations and require prerequisites when requested
+  ansible.builtin.assert:
+    that:
+      - executable_result.status in ['ready', 'missing']
+      - not (executable_required | bool) or executable_result.status == 'ready'
+    fail_msg: >-
+      {{ executable_definition.name | default(executable_definition.id) }}: {{ executable_result.reason }}.
+      Repair or upgrade the existing installation, or select a working absolute path with
+      workstation_executable_overrides. Missing terminal prerequisites must be installed first.
+
+- name: Remember selected executable for subsequent configuration
+  ansible.builtin.set_fact:
+    workstation_executables: "{{ workstation_executables | default({}) | combine({executable_definition.id: executable_result.path}) }}"
+  when: executable_result.status == 'ready'
+
+- name: Expose known standalone locations to subsequent discovery and shell setup
+  ansible.builtin.set_fact:
+    workstation_resolved_bin_paths: "{{ ((workstation_resolved_bin_paths | default([])) + [executable_result.path | dirname]) | unique | list }}"
+  when:
+    - executable_result.status == 'ready'
+    - (executable_result.path | dirname) not in executable_search_path.split(':')

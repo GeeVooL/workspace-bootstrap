@@ -12,20 +12,87 @@ applications_catalog:
           installer: snapd
   utilities:
     macos:
-      formulae:
-        - {name: mise, workplace_permitted: true}
-        - {name: fish, workplace_permitted: true}
-        - {name: git, workplace_permitted: true}
-        - {name: starship, workplace_permitted: true}
-        - {name: fzf, workplace_permitted: true}
-        - {name: zoxide, workplace_permitted: true}
-        - {name: bat, workplace_permitted: true}
-        - {name: fd, workplace_permitted: true}
-        - {name: ripgrep, workplace_permitted: true}
-        - {name: tree, workplace_permitted: true}
-        - {name: jq, workplace_permitted: true}
+      formulae: []
       casks: []
       apps:
+        - name: mise
+          workplace_permitted: true
+          id: mise
+          commands: [mise]
+          paths: ["{{ applications_bin_dir }}/mise"]
+          cli: true
+          installer: mise
+          url: https://mise.run
+        - name: fish
+          id: fish
+          workplace_permitted: true
+          cli: true
+          commands: [fish]
+          installer: homebrew
+          formula: fish
+        - name: git
+          id: git
+          workplace_permitted: true
+          cli: true
+          commands: [git]
+          installer: homebrew
+          formula: git
+        - name: starship
+          id: starship
+          workplace_permitted: true
+          cli: true
+          commands: [starship]
+          installer: homebrew
+          formula: starship
+        - name: fzf
+          id: fzf
+          workplace_permitted: true
+          cli: true
+          commands: [fzf]
+          installer: homebrew
+          formula: fzf
+        - name: zoxide
+          id: zoxide
+          workplace_permitted: true
+          cli: true
+          commands: [zoxide]
+          installer: homebrew
+          formula: zoxide
+        - name: bat
+          id: bat
+          workplace_permitted: true
+          cli: true
+          commands: [bat, batcat]
+          installer: homebrew
+          formula: bat
+        - name: fd
+          id: fd
+          workplace_permitted: true
+          cli: true
+          commands: [fd, fdfind]
+          installer: homebrew
+          formula: fd
+        - name: ripgrep
+          id: ripgrep
+          workplace_permitted: true
+          cli: true
+          commands: [rg]
+          installer: homebrew
+          formula: ripgrep
+        - name: tree
+          id: tree
+          workplace_permitted: true
+          cli: true
+          commands: [tree]
+          installer: homebrew
+          formula: tree
+        - name: jq
+          id: jq
+          workplace_permitted: true
+          cli: true
+          commands: [jq]
+          installer: homebrew
+          formula: jq
         - name: Ghostty
           workplace_permitted: true
           id: ghostty
@@ -36,6 +103,14 @@ applications_catalog:
     linux:
       packages: []
       apps:
+        - name: mise
+          id: mise
+          workplace_permitted: true
+          cli: true
+          commands: [mise]
+          paths: ["{{ applications_bin_dir }}/mise"]
+          installer: mise
+          url: https://mise.run
         - name: Ghostty
           workplace_permitted: true
           id: ghostty
@@ -212,14 +287,26 @@ applications_catalog:
           remote_url: https://dl.flathub.org/repo/flathub.flatpakrepo
   android_development:
     macos:
-      formulae:
-        - {name: scrcpy, workplace_permitted: true}
-        - {name: jadx, workplace_permitted: true}
+      formulae: []
       casks:
         - {name: android-platform-tools, workplace_permitted: true}
         - {name: android-commandlinetools, workplace_permitted: true}
         - {name: temurin, workplace_permitted: true}
       apps:
+        - name: scrcpy
+          id: scrcpy
+          workplace_permitted: true
+          cli: true
+          commands: [scrcpy]
+          installer: homebrew
+          formula: scrcpy
+        - name: jadx
+          id: jadx
+          workplace_permitted: true
+          cli: true
+          commands: [jadx]
+          installer: homebrew
+          formula: jadx
         - name: Oh My Android
           id: oh-my-android
           workplace_permitted: false

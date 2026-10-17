@@ -11,62 +11,22 @@
           - ansible_facts.user_uid != 0
         fail_msg: Run this locally as your normal account on macOS or Linux, without sudo.
 
-    - name: Locate required tools
-      ansible.builtin.shell: >-
-        {% if item == 'fd' %}command -v fdfind || command -v fd
-        {% elif item == 'bat' %}command -v bat || command -v batcat
-        {% else %}command -v {{ item | quote }}{% endif %}
-      args:
-        executable: /bin/sh
-      loop:
-        - fish
-        - git
-        - starship
-        - fzf
-        - zoxide
-        - fd
-        - bat
-        - curl
-        - tar
-      register: terminal_tools
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: Require installed tools before modifying configuration
-      ansible.builtin.assert:
-        that:
-          - item.rc == 0
-          - item.stdout.startswith('/')
-        fail_msg: "Install {{ item.item }} and make it available on PATH, then rerun. See README.md."
-      loop: "{{ terminal_tools.results }}"
+    - name: Resolve and validate required terminal executables
+      ansible.builtin.include_role:
+        name: executable_discovery
+      vars:
+        executable_definition: "{{ terminal_tool }}"
+        executable_search_path: "{{ terminal_search_path }}"
+        executable_required: true
+      loop: "{{ terminal_required_tools }}"
       loop_control:
-        label: "{{ item.item }}"
+        loop_var: terminal_tool
+        label: "{{ terminal_tool.id }}"
 
     - name: Remember tool paths
       ansible.builtin.set_fact:
-        fish_executable: "{{ terminal_tools.results[0].stdout }}"
-        fzf_executable: "{{ terminal_tools.results[3].stdout }}"
-
-    - name: Read tool versions
-      ansible.builtin.command:
-        argv: ["{{ item.path }}", --version]
-      loop:
-        - { name: fish, path: "{{ fish_executable }}", minimum: '4.0.0' }
-        - { name: fzf, path: "{{ fzf_executable }}", minimum: '0.33.0' }
-        - { name: fd, path: "{{ terminal_tools.results[5].stdout }}", minimum: '8.5.0' }
-        - { name: bat, path: "{{ terminal_tools.results[6].stdout }}", minimum: '0.16.0' }
-      register: terminal_versions
-      changed_when: false
-      check_mode: false
-
-    - name: Require versions supported by fzf.fish
-      ansible.builtin.assert:
-        that: (item.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) is version(item.item.minimum, '>=')
-        fail_msg: "Upgrade {{ item.item.name }} to {{ item.item.minimum }} or later."
-      loop: "{{ terminal_versions.results }}"
-      loop_control:
-        label: "{{ item.item.name }}"
+        fish_executable: "{{ workstation_executables.fish }}"
+        fzf_executable: "{{ workstation_executables.fzf }}"
 
     - name: Create Fish configuration directory
       ansible.builtin.file:

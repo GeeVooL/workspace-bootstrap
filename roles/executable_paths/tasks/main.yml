@@ -1,0 +1,19 @@
+---
+- name: Select shared executable directories
+  ansible.builtin.set_fact:
+    workstation_search_directories: >-
+      {{ ((workstation_executable_overrides.values() | map('dirname') | list) +
+          workstation_extra_bin_paths + (shell_extra_bin_paths | default([])) +
+          [executable_paths_home ~ '/.local/bin', workstation_cargo_home ~ '/bin', executable_paths_home ~ '/.fzf/bin'] +
+          (['/opt/homebrew/bin', '/opt/homebrew/sbin'] if ansible_facts.system == 'Darwin' and ansible_facts.architecture | default('') == 'arm64' else []) +
+          ['/usr/local/bin', '/usr/local/sbin'] +
+          (['/opt/homebrew/bin', '/opt/homebrew/sbin'] if ansible_facts.system == 'Darwin' and ansible_facts.architecture | default('') != 'arm64' else []) +
+          (['/snap/bin', '/var/lib/snapd/snap/bin'] if ansible_facts.system == 'Linux' else [])) | unique | list }}
+
+- name: Require absolute shared paths
+  ansible.builtin.assert:
+    that:
+      - item.startswith('/')
+      - "':' not in item"
+      - "'\n' not in item"
+  loop: "{{ workstation_search_directories }}"

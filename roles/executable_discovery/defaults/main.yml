@@ -1,0 +1,3 @@
+---
+executable_search_path: "{{ (workstation_search_directories + ansible_facts.env.PATH.split(':')) | unique | join(':') }}"
+executable_required: false

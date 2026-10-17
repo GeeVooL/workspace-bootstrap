@@ -1,0 +1,69 @@
+---
+- name: Preview standalone mise installation
+  ansible.builtin.debug:
+    msg: "Would install mise using {{ application.url }} into {{ applications_bin_dir }}/mise; shell setup is managed separately."
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Install standalone mise only when missing
+  when: not ansible_check_mode
+  block:
+    - name: Create a temporary mise installer directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: -mise-install
+      register: application_mise_temp
+
+    - name: Download the official mise installer
+      ansible.builtin.get_url:
+        url: "{{ application.url }}"
+        dest: "{{ application_mise_temp.path }}/install.sh"
+        mode: '0600'
+
+    - name: Create the user executable directory
+      ansible.builtin.file:
+        path: "{{ applications_bin_dir }}"
+        state: directory
+
+    - name: Install mise into staging without changing shell startup files
+      ansible.builtin.command:
+        argv: [/bin/sh, "{{ application_mise_temp.path }}/install.sh"]
+      environment:
+        HOME: "{{ applications_home }}"
+        MISE_INSTALL_PATH: "{{ application_mise_temp.path }}/mise"
+        MISE_INSTALL_HELP: '0'
+        MISE_VERSION: "{{ application.version | default('') }}"
+      changed_when: true
+
+    - name: Verify the staged mise executable
+      ansible.builtin.command:
+        argv: ["{{ application_mise_temp.path }}/mise", --version]
+      register: application_mise_version
+      changed_when: false
+      failed_when: application_mise_version.rc != 0 or not (application_mise_version.stdout is search('[0-9]+\.[0-9]+\.[0-9]+'))
+
+    - name: Inspect the destination before publishing mise
+      ansible.builtin.stat:
+        path: "{{ applications_bin_dir }}/mise"
+        follow: false
+      register: application_mise_destination
+
+    - name: Preserve a destination created since discovery
+      ansible.builtin.assert:
+        that: not application_mise_destination.stat.exists
+        fail_msg: A mise destination appeared during installation; preserving it.
+
+    - name: Publish the verified mise binary
+      ansible.builtin.copy:
+        src: "{{ application_mise_temp.path }}/mise"
+        dest: "{{ applications_bin_dir }}/mise"
+        remote_src: true
+        force: false
+        mode: '0755'
+
+  always:
+    - name: Remove the temporary mise installer and payload
+      ansible.builtin.file:
+        path: "{{ application_mise_temp.path }}"
+        state: absent
+      when: application_mise_temp.path is defined

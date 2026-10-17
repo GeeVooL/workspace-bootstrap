@@ -45,7 +45,13 @@ env = dict(os.environ, ANSIBLE_REMOTE_TEMP=str(root / 'remote'))
 catalog = yaml.safe_load(Path('inventories/local/group_vars/workstations.yml').read_text())['applications_catalog']
 # The signed package installer has its own offline fixture suite.
 catalog['development']['macos']['apple_container'] = False
-# Ghostty installation has its own offline routing suite.
+# CLI discovery and mise/Ghostty installers have separate fixture suites.
+# Keep testing legacy package-list installation and batching here.
+catalog['utilities']['macos']['formulae'] = [
+    {'name': app['formula'], 'workplace_permitted': True}
+    for app in catalog['utilities']['macos']['apps']
+    if app.get('cli') and app['installer'] == 'homebrew'
+]
 catalog['utilities']['macos']['apps'] = []
 
 def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
@@ -151,6 +157,6 @@ full = dict(variables, applications_enabled_categories=['utilities', 'developmen
 assert 'changed=1' in run('utilities-apply', 'applications.yml', full)
 assert 'changed=0' in run('utilities-repeat', 'applications.yml', full)
 packages = json.loads((root / 'packages.json').read_text())
-assert set(packages['formula']) == {'mise', 'fish', 'git', 'starship', 'fzf', 'zoxide', 'bat', 'fd', 'ripgrep', 'tree', 'jq'}
+assert set(packages['formula']) == {'fish', 'git', 'starship', 'fzf', 'zoxide', 'bat', 'fd', 'ripgrep', 'tree', 'jq'}
 assert packages['cask'] == ['fork']
 print('All checks passed on macOS; Homebrew and Linux OS facts were simulated. Logs:', root)

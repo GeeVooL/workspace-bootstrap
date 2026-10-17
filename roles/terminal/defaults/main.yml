@@ -5,3 +5,13 @@ fisher_bootstrap_url: https://raw.githubusercontent.com/jorgebucaran/fisher/4.4.
 ghostty_default_config_path: "{{ (shell_home ~ '/Library/Application Support/com.mitchellh.ghostty/config.ghostty') if ansible_facts.system == 'Darwin' else (terminal_config_root ~ '/ghostty/config.ghostty') }}"
 terminal_search_path: "{{ (workstation_bin_paths + [ansible_facts.env.PATH]) | join(':') }}"
 ghostty_config_paths: "{{ [ghostty_config_path] if ghostty_config_path is defined else [terminal_config_root ~ '/ghostty/config', terminal_config_root ~ '/ghostty/config.ghostty'] + ([shell_home ~ '/Library/Application Support/com.mitchellh.ghostty/config', shell_home ~ '/Library/Application Support/com.mitchellh.ghostty/config.ghostty'] if ansible_facts.system == 'Darwin' else []) }}"
+terminal_required_tools:
+  - {id: fish, commands: [fish]}
+  - {id: git, commands: [git]}
+  - {id: starship, commands: [starship]}
+  - {id: fzf, commands: [fzf]}
+  - {id: zoxide, commands: [zoxide]}
+  - {id: fd, commands: [fd, fdfind]}
+  - {id: bat, commands: [bat, batcat]}
+  - {id: curl, commands: [curl]}
+  - {id: tar, commands: [tar]}

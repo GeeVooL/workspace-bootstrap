@@ -25,8 +25,15 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
     for path in (home, config, zdotdir, bins):
         path.mkdir(parents=True, exist_ok=True)
     tools = ['git', 'starship', 'fzf', 'zoxide', 'bat', 'fd', 'rg', 'tree', 'jq']
+    tools += ['mise', 'cargo-probe']
+    expected_paths = {tool: bins/tool for tool in tools}
+    cargo = home/'custom-cargo'
+    expected_paths.update({'mise': home/'.local/bin/mise',
+                           'cargo-probe': cargo/'bin/cargo-probe',
+                           'fzf': home/'.fzf/bin/fzf'})
     for tool in tools:
-        executable = bins/tool
+        executable = expected_paths[tool]
+        executable.parent.mkdir(parents=True, exist_ok=True)
         executable.write_text('#!/bin/sh\nexit 0\n')
         executable.chmod(0o755)
     originals = {
@@ -43,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
         'shell_home': str(home), 'terminal_config_root': str(config),
         'shell_zdotdir': str(zdotdir), 'shell_extra_bin_paths': [str(bins)],
     }
-    env = dict(os.environ, ANSIBLE_HOME=str(root/'ansible'),
+    env = dict(os.environ, CARGO_HOME=str(cargo), ANSIBLE_HOME=str(root/'ansible'),
                ANSIBLE_LOCAL_TEMP=str(root/'local'), ANSIBLE_REMOTE_TEMP=str(root/'remote'))
     if sys.platform == 'linux':
         # Even an existing Linuxbrew installation must not be queried.
@@ -80,12 +87,15 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
     clean = {'HOME': str(home), 'XDG_CONFIG_HOME': str(config),
              'XDG_DATA_HOME': str(root/'data'), 'XDG_CACHE_HOME': str(root/'cache'),
              'ZDOTDIR': str(zdotdir), 'PATH': '/usr/bin:/bin', 'TERM': 'dumb'}
-    for shell, modes in [('fish', ['-ic']), ('bash', ['-ic', '-lic']), ('zsh', ['-ic', '-lic'])]:
+    # Managed directories may already occur later in an inherited PATH.
+    # Keep the same precedence as discovery, even then, without accumulating entries.
+    clean['PATH'] += ':' + ':'.join(map(str, [home/'.local/bin', cargo/'bin', bins, home/'.fzf/bin']))
+    for shell, modes in [('fish', ['-c', '-ic']), ('bash', ['-ic', '-lic']), ('zsh', ['-ic', '-lic'])]:
         for mode in modes:
             commands = '; '.join('command -v ' + tool for tool in tools)
             result = subprocess.run([SHELLS[shell], mode, commands], env=clean, text=True, capture_output=True)
             assert result.returncode == 0, (shell, mode, result.stderr)
-            assert result.stdout.splitlines() == [str(bins/tool) for tool in tools], (shell, mode, result.stdout)
+            assert result.stdout.splitlines() == [str(expected_paths[tool]) for tool in tools], (shell, mode, result.stdout)
             # Sourcing twice must not accumulate PATH entries.
             source = snippet if shell == 'fish' else config/'workstation-bootstrap'/'path.sh'
             command = 'source ' + shlex.quote(str(source))
@@ -93,7 +103,25 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
             result = subprocess.run([SHELLS[shell], mode, command+'; '+command+'; '+print_path],
                                     env=clean, text=True, capture_output=True, check=True)
             assert result.stdout.strip().split(':').count(str(bins)) == 1, (shell, mode, result.stdout)
+            for managed in [cargo/'bin', home/'.local/bin', home/'.fzf/bin']:
+                assert result.stdout.strip().split(':').count(str(managed)) == 1, (shell, mode, result.stdout)
             print(f'{shell} {mode}: all utilities discoverable; no duplicate PATH entries')
+
+    override = root/'override/bin/git'
+    override.parent.mkdir(parents=True)
+    override.write_text('#!/bin/sh\nexit 0\n')
+    override.chmod(0o755)
+    variables['workstation_executable_overrides'] = {'git': str(override)}
+    deploy()
+    assert 'changed=0' in deploy()
+    for shell in ('fish', 'bash', 'zsh'):
+        inherited = dict(clean, PATH=str(bins) + ':' + clean['PATH'] + ':' + str(override.parent))
+        result = subprocess.run([SHELLS[shell], '-ic', 'command -v git'], env=inherited,
+                                text=True, capture_output=True, check=True)
+        assert result.stdout.strip() == str(override), (shell, result.stdout)
+    variables.pop('workstation_executable_overrides')
+    deploy()
+
     # Bash skips missing/dangling profiles; discovery must select the file it loads.
     (home / '.bash_profile').symlink_to(home / 'missing-profile')
     (home / '.bash_login').unlink()
