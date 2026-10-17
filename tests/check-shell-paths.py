@@ -94,4 +94,72 @@ with tempfile.TemporaryDirectory(prefix='workstation-shells-') as directory:
                                     env=clean, text=True, capture_output=True, check=True)
             assert result.stdout.strip().split(':').count(str(bins)) == 1, (shell, mode, result.stdout)
             print(f'{shell} {mode}: all utilities discoverable; no duplicate PATH entries')
+    # Bash skips missing/dangling profiles; discovery must select the file it loads.
+    (home / '.bash_profile').symlink_to(home / 'missing-profile')
+    (home / '.bash_login').unlink()
+    profile = home / '.profile'
+    original = profile.read_text()
+    deploy('--check')
+    assert profile.read_text() == original
+    deploy()
+    assert (home / '.bash_profile').is_symlink()
+    result = subprocess.run([SHELLS['bash'], '-lc', 'command -v git'], env=clean,
+                            text=True, capture_output=True, check=True)
+    assert result.stdout.strip() == str(bins / 'git'), result
+    assert 'changed=0' in deploy()
+    # Remove the lower file's hook so any incorrect fallback would produce a change.
+    profile.write_text(original)
+    # Bash stops fallback on traversal errors; preserve blockers and later files.
+    (home / '.bash_profile').unlink()
+    (home / '.bash_profile').symlink_to(home / '.bash_profile')
+    assert 'changed=0' in deploy('--check')
+    assert 'changed=0' in deploy()
+    assert profile.read_text() == original
+    assert (home / '.bash_profile').is_symlink()
+    (home / '.bash_profile').unlink()
+    private = root / 'inaccessible'
+    private.mkdir()
+    (private / 'profile').write_text('# Private profile\n')
+    (home / '.bash_profile').symlink_to(private / 'profile')
+    private.chmod(0o000)
+    try:
+        assert 'changed=0' in deploy()
+        assert (home / '.bash_profile').is_symlink()
+        assert profile.read_text() == original
+    finally:
+        private.chmod(0o700)
+    assert (private / 'profile').read_text() == '# Private profile\n'
+    (home / '.bash_profile').unlink()
+    (home / '.bash_profile').write_text('# Unreadable profile\n')
+    (home / '.bash_profile').chmod(0o000)
+    before = profile.read_text()
+    assert 'changed=0' in deploy()
+    assert (home / '.bash_profile').stat().st_mode & 0o777 == 0
+    assert profile.read_text() == before
+    (home / '.bash_profile').chmod(0o600)
+    assert (home / '.bash_profile').read_text() == '# Unreadable profile\n'
+    # A directory also blocks fallback and must not cause edits to later profiles.
+    (home / '.bash_profile').unlink()
+    (home / '.bash_profile').mkdir()
+    before = profile.read_text()
+    assert 'changed=0' in deploy()
+    assert (home / '.bash_profile').is_dir() and profile.read_text() == before
+    (home / '.bash_profile').rmdir()
+    # A readable symlink is active but its target must not be edited, nor a later file.
+    shared = root / 'shared-profile'
+    shared.write_text('# Shared profile\n')
+    (home / '.bash_profile').symlink_to(shared)
+    before = profile.read_text()
+    assert 'changed=0' in deploy()
+    assert shared.read_text() == '# Shared profile\n' and profile.read_text() == before
+    # If all login files are unreadable, preserve the fallback .profile as well.
+    (home / '.bash_profile').unlink()
+    before = profile.read_text()
+    profile.chmod(0o000)
+    try:
+        assert 'changed=0' in deploy()
+    finally:
+        profile.chmod(0o600)
+    assert profile.read_text() == before
+
     print('Check mode, preservation, backups, syntax, and idempotence passed on ' + sys.platform)

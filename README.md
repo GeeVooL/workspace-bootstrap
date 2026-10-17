@@ -85,7 +85,7 @@ ansible-playbook shell-paths.yml
 
 Run from a native terminal on Apple Silicon. Homebrew bootstraps into the standard
 architecture-specific prefix. Its official noninteractive installer may require
-cached administrator authorization (`sudo -v`) and Apple's Command Line Tools
+administrator authorization through the macOS password dialog and Apple's Command Line Tools
 (`xcode-select --install`); do not run Ansible itself with sudo. The temporary
 installer is removed afterward. Check mode reports missing Homebrew and packages
 without downloading or running the installer.
@@ -205,7 +205,8 @@ ansible-playbook applications.yml -e workplace_only=true --check --diff
 `workplace_only` defaults to `false`, which includes all selected apps. Set it in
 `host_vars/localhost.yml` for a work machine, or override it on the command line.
 Workplace mode includes only entries with the YAML boolean `workplace_permitted: true`;
-false or missing approval is skipped before discovery, downloads, and installation.
+false, missing, string, or numeric approval values are skipped before discovery,
+downloads, and installation.
 Category selections and exclusions still apply. This filters application installation;
 it does not uninstall existing apps or change terminal configuration and Fisher plugins.
 
@@ -272,9 +273,15 @@ the `snapd` snap, following [Snap's Debian instructions](https://snapcraft.io/do
 Fedora gets the `/snap` symlink needed for classic snaps, following
 [Snap's Fedora instructions](https://snapcraft.io/docs/tutorials/install-the-daemon/fedora/).
 An unrelated file, directory, or symlink at `/snap` is preserved and reported as an
-error. Service startup and the Debian `snapd` snap apply only to a newly installed
-package. Existing service enablement/running state is preserved; rerunning does
-not reinstall snaps or start an intentionally stopped daemon.
+error. These paths are checked before installation. Service startup and the Debian
+`snapd` snap apply to new or interrupted bootstrap-owned setup. A persistent marker
+at `/var/lib/workstation-bootstrap/snapd-installing` is written before installing
+the package and removed only after setup succeeds. A retry resumes unfinished
+package installation, service startup, seeding, and Debian snap installation.
+`applications_snap_setup_marker` overrides the marker path for isolated validation.
+Existing installations without this marker retain their service enablement/running
+state; rerunning does not reinstall snaps or start an intentionally stopped daemon.
+Unrelated files and symlinks at the marker path are preserved and reported as errors.
 
 This does not configure extra distribution repositories or bypass distro policies
 that disable Snap. Other distributions, non-systemd hosts, and OSTree systems need
@@ -549,8 +556,10 @@ ansible-playbook applications.yml -e '{"applications_enabled_categories": ["edit
 
 On macOS, Zed uses the `zed` Homebrew cask. VS Code uses Microsoft's official
 Universal `.dmg`: the role mounts it read-only, copies `Visual Studio Code.app`
-into `/Applications`, then unmounts and removes the download. The destination can
-be overridden with `applications_macos_install_dir`; the account must have write
+into staging inside `/Applications`, validates its metadata and executable, and
+publishes the complete bundle without replacing an existing destination. Failed
+copies are cleaned up so retries can install again. It then unmounts and removes
+the download. Override the destination with `applications_macos_install_dir`; the account must have write
 access there. VS Code's command palette can install the `code` command in PATH.
 See [Microsoft's macOS instructions](https://code.visualstudio.com/docs/setup/mac).
 
@@ -573,7 +582,8 @@ Before installing, the role checks CLI commands and known installation locations
 including `/Applications`, `~/Applications`, the official Zed Linux install path,
 and standard user/system Flatpak locations. VS Code also checks the Linux native
 package database. Homebrew's inventory prevents reinstalling an existing Zed cask.
-Detected editors are left untouched: no reinstall, upgrade, or settings changes.
+Healthy detected editors are left untouched. A bootstrap-owned pending Zed
+installation resumes vendor integration before clearing its recovery marker.
 For custom locations, extend `applications_search_path`, `applications_macos_dirs`,
 or the catalog application's `paths` list. Check mode reports missing editors
 without downloading or running installers. Temporary downloads are removed afterward.
@@ -633,7 +643,8 @@ containers and refuses to interrupt them. For an idle running service, it runs
 `container system stop`, installs the package, and restores the service with
 `container system start --enable-kernel-install`, even after an installer failure.
 A previously stopped service stays stopped during an upgrade. Current/newer
-versions do not cause any service changes; downgrades are never automatic.
+versions do not cause service changes unless a bootstrap-owned pending startup
+needs recovery; downgrades are never automatic.
 
 Fresh installs start the service by default, including downloading the default
 Linux kernel if needed. Set `apple_container_start_after_install=false` to leave
@@ -666,8 +677,12 @@ source `workstation-bootstrap/path.sh` under `terminal_config_root` through mana
 blocks in `.bashrc`, the first existing Bash login file (`.bash_profile`,
 `.bash_login`, then `.profile`; otherwise a new `.profile`), `.zshrc`, and
 `.zprofile`. Zsh honors an exported `ZDOTDIR`; set `shell_zdotdir` explicitly if
-it is assigned only inside `.zshenv`. Blocks are inserted before existing content;
-subsequent user configuration can override PATH. Changed files are backed up.
+it is assigned only inside `.zshenv`. Missing targets and dangling links are skipped
+during Bash selection. Unreadable files, directories, and traversal errors block
+Bash's fallback to later profiles; these paths and symlinks are preserved, and
+later login files are left untouched.
+Blocks are inserted before existing content; subsequent user configuration can
+override PATH. Changed files are backed up.
 Noninteractive scripts inherit PATH from their parent shell; this does not edit
 system-wide profiles or force initialization for every script.
 
@@ -706,17 +721,20 @@ manage and repair the required plugin code using its tracked-file metadata.
 
 When enabled, the Ghostty task checks all documented locations in load order:
 
-1. `$XDG_CONFIG_HOME/ghostty/config.ghostty`
-2. `$XDG_CONFIG_HOME/ghostty/config`
-3. On macOS, `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`
-4. On macOS, `~/Library/Application Support/com.mitchellh.ghostty/config`
+1. `$XDG_CONFIG_HOME/ghostty/config`
+2. `$XDG_CONFIG_HOME/ghostty/config.ghostty`
+3. On macOS, `~/Library/Application Support/com.mitchellh.ghostty/config`
+4. On macOS, `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`
 
 `XDG_CONFIG_HOME` defaults to `~/.config`; `terminal_config_root` overrides it for
 this deployment. If any loaded file defines `command` or `initial-command`, nothing
 is added. Files using `config-file` includes are also left alone because an included
 file may define the launch command. Otherwise the Fish command is appended to the
-last existing file, with a backup. If no file exists, the platform's `config.ghostty`
-is created (macOS-specific directory on macOS, XDG directory on Linux). Fonts,
+last existing file only if it starts with `# Managed by Workstation Bootstrap.`,
+with a backup. Unmarked files are preserved, including files containing only fonts
+or themes; add the desired launch command yourself for those files. If no file
+exists, the platform's `config.ghostty` is created with the managed marker
+(macOS-specific directory on macOS, XDG directory on Linux). Fonts,
 themes, key bindings, and existing file permissions are preserved.
 
 `ghostty_config_path` explicitly selects a single custom file instead of discovery;
@@ -923,8 +941,9 @@ path handling, and exit-status checks using a recording Ansible fixture.
 
 Run `python3 tests/check-snap-setup.py` for offline Snap setup tests covering
 category ordering, workplace filtering, check mode, existing-service preservation, mount-path
-preservation, failures, and repeat-run idempotence. Package managers, Snap, and
-systemd are simulated; these checks do not validate real daemon startup or snap mounts.
+preservation, setup-marker ownership, failure recovery, and repeat-run idempotence.
+Package managers, Snap, and systemd are simulated; these checks do not validate
+real daemon startup or snap mounts.
 
 Run `python3 tests/check-tool-names.py` for alternate executable detection,
 version checks, alias argument forwarding, and preservation of existing commands
@@ -933,6 +952,9 @@ and Fish functions. These checks use isolated executable fixtures.
 Run `python3 tests/check-config-preservation.py` to verify managed-file adoption,
 backed-up updates, unmarked files and symlinks, directory/file permissions, Ghostty
 load order, legacy filenames, included configuration, and repeat-run idempotence.
+Ghostty checks cover unmarked-file preservation, marked-file backups, and creation
+of marked configurations. Editor checks also cover failed and invalid DMG copies,
+retry installation, and preservation of destinations appearing during publication.
 
 ### Cross-platform audit (2026-10-08)
 
@@ -970,3 +992,32 @@ checks, including check mode, argument forwarding, symlink and unmarked-payload
 preservation, and repeat-run idempotence. `tests/check-platform-apps.py` also tests
 ARM64 1Password recovery after its command becomes discoverable. On macOS that
 fixture substitutes native tar for Ansible's GNU tar extraction backend.
+
+### Installer recovery and preservation
+
+Fresh Homebrew bootstrap requires Apple Silicon; existing Intel Homebrew installations
+remain usable. Casks that require administrator access use a macOS password dialog
+through a temporary `SUDO_ASKPASS` helper, because Ansible workers do not have a
+controlling terminal. The password is not stored. For unattended installations set
+`homebrew_sudo_askpass` to an existing trusted executable or configure passwordless
+sudo. Ansible's `-K` password is not forwarded to Homebrew.
+
+Apple Container records pending startup in `apple_container_recovery_marker` and
+retries it even when the newest binary is already installed. Zed records interrupted
+vendor installation in `applications_zed_marker`; an incomplete unmarked installation
+is preserved and requires manual repair. Zed presence checks use executable payloads,
+not desktop files or empty application directories. Font installation preserves each
+existing destination, including dangling symlinks. Archive publication uses atomic
+no-replace rename on macOS and Linux, failing if a destination appears concurrently.
+Linux systems must provide libc `renameat2` support for archive publication.
+
+Catalog platform definitions and collection types, installer/platform combinations,
+and setup category references are validated before their corresponding work begins.
+Native RPM installation explicitly enables local-package signature verification.
+Fisher repair isolates the required repair request from unrelated manifest entries,
+restores those entries on failure, and preserves local-path casing.
+
+Run `python3 tests/check-review-regressions.py` in the Ansible Python environment
+for offline signature-status field binding, atomic publication collisions, Zed
+interrupted-install recovery, unmarked Zed preservation, and malformed catalog
+checks. Signature verification uses synthetic GnuPG status records, not live keys.

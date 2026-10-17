@@ -1,0 +1,9 @@
+---
+# The module runtime resolves auto/auto_silent; those settings are not commands.
+# Read the registered module result so inventory fact overrides cannot hide it.
+- name: Resolve the actual Python runtime used by Ansible modules
+  ansible.builtin.setup:
+    gather_subset: ['!all', '!min', python]
+    filter: ansible_python
+  register: application_python_runtime
+  changed_when: false

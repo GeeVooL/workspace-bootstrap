@@ -9,10 +9,11 @@
 - name: Validate application category selection
   ansible.builtin.assert:
     that:
-      - applications_setup_categories is sequence and applications_setup_categories is not string
+      - applications_setup_categories is sequence and applications_setup_categories is not string and applications_setup_categories is not mapping
       - applications_catalog is mapping
-      - applications_enabled_categories is sequence and applications_enabled_categories is not string
-      - applications_excluded_categories is sequence and applications_excluded_categories is not string
+      - applications_setup_categories | difference(applications_catalog.keys() | list) | length == 0
+      - applications_enabled_categories is sequence and applications_enabled_categories is not string and applications_enabled_categories is not mapping
+      - applications_excluded_categories is sequence and applications_excluded_categories is not string and applications_excluded_categories is not mapping
       - applications_enabled_categories | difference(applications_catalog.keys() | list) | length == 0
       - applications_excluded_categories | difference(applications_catalog.keys() | list) | length == 0
     fail_msg: Enabled and excluded categories must be lists of names from applications_catalog.

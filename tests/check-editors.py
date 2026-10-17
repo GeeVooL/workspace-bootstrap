@@ -55,7 +55,7 @@ if name == 'brew':
     else: raise AssertionError(args)
 elif name in ['dpkg-query', 'rpm']:
     if not state.exists(): sys.exit(1)
-    print('install ok installed' if name == 'dpkg-query' else 'code-1.0')
+    print('installed' if name == 'dpkg-query' else 'code-1.0')
 elif name in ['fixture-apt', 'dnf', 'dnf5', 'yum', 'zypper']:
     package = pathlib.Path(args[-1])
     assert package.exists() and package.suffix == ('.deb' if name == 'fixture-apt' else '.rpm')
@@ -69,13 +69,28 @@ elif name == 'snap':
 elif name == 'fixture-key':
     assert args == ['https://packages.microsoft.com/keys/microsoft.asc']
 elif name == 'ditto':
+    if (root / 'failed-copy').exists():
+        pathlib.Path(args[1]).mkdir(parents=True)
+        sys.exit(1)
     shutil.copytree(args[0], args[1])
+    if (root / 'publish-collision').exists():
+        destination = pathlib.Path(args[1]).parent.parent / pathlib.Path(args[1]).name
+        destination.mkdir()
+        (destination / 'user-file').write_text('preserve me')
 elif name == 'hdiutil':
     if args[0] == 'attach':
         mount = pathlib.Path(args[args.index('-mountpoint') + 1])
         app = mount / 'Visual Studio Code.app'
         app.mkdir(parents=True)
         (app / 'fixture').write_text('official DMG fixture')
+        if not (root / 'invalid-bundle').exists():
+            import plistlib
+            contents = app / 'Contents'
+            (contents / 'MacOS').mkdir(parents=True)
+            (contents / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': 'fixture'}))
+            executable = contents / 'MacOS/fixture'
+            executable.write_text('#!/bin/sh\nexit 0\n')
+            executable.chmod(0o755)
     elif args[0] == 'detach':
         import shutil
         shutil.rmtree(args[1])
@@ -111,7 +126,7 @@ for platform, apps in catalog['editors'].items():
                     assert f'linux-{fmt}-' in url
                     assert ('arm64' if arch == 'aarch64' else 'x64') in url
                     arches[arch] = download.as_uri()
-        if platform == 'linux': app['paths'] = ['{{ applications_home }}/.local/zed.app/bin/zed'] if app['id'] == 'zed' else []
+        if platform == 'linux' and app['id'] != 'zed': app['paths'] = []
 
 typora = catalog['writing']['linux']['apps'][0]
 assert typora['workplace_permitted'] is False
@@ -155,6 +170,38 @@ assert '"detach"' in calls
 before = (root / 'mac/state/calls').read_text()
 assert 'changed=0' in run('mac-existing-bundles', v)
 assert (root / 'mac/state/calls').read_text() == before
+
+# Failed copies and invalid bundles never create the final app, and retries work.
+for failure in ['failed-copy', 'invalid-bundle']:
+    v = variables('Darwin', failure)
+    v['applications_catalog']['editors']['macos']['apps'] = [v['applications_catalog']['editors']['macos']['apps'][0]]
+    home = Path(v['applications_home'])
+    state = home / 'state'
+    state.mkdir(parents=True)
+    flag = state / failure
+    flag.touch()
+    run(failure, v, expected=2)
+    destination = home / 'Applications/Visual Studio Code.app'
+    assert not destination.exists()
+    assert not list((home / 'Applications').glob('.workstation-dmg-*'))
+    run(failure + '-preview', v, check=True)
+    assert not destination.exists()
+    flag.unlink()
+    run(failure + '-retry', v)
+    assert (destination / 'Contents/MacOS/fixture').is_file()
+    assert not list((home / 'Applications').glob('.workstation-dmg-*'))
+    assert 'changed=0' in run(failure + '-repeat', v)
+
+v = variables('Darwin', 'publish-collision')
+v['applications_catalog']['editors']['macos']['apps'] = [v['applications_catalog']['editors']['macos']['apps'][0]]
+home = Path(v['applications_home'])
+(home / 'state').mkdir(parents=True)
+(home / 'state/publish-collision').touch()
+run('publish-collision', v, expected=2)
+destination = home / 'Applications/Visual Studio Code.app'
+assert list(destination.iterdir()) == [destination / 'user-file']
+assert (destination / 'user-file').read_text() == 'preserve me'
+assert not list((home / 'Applications').glob('.workstation-dmg-*'))
 
 for family, manager, arch in [('Debian', 'apt', 'x86_64'), ('Debian', 'apt', 'aarch64'), ('RedHat', 'dnf', 'x86_64'), ('RedHat', 'dnf5', 'aarch64'), ('Suse', 'zypper', 'x86_64')]:
     name = manager + '-' + arch
@@ -201,6 +248,14 @@ for category, cask, bundle in [('writing', 'typora', 'Typora.app'),
     before = (root / cask / 'state/calls').read_text()
     assert 'changed=0' in run(cask + '-existing-bundle', v)
     assert (root / cask / 'state/calls').read_text() == before
+
+# Automatic interpreter settings must resolve to a real helper executable.
+for discovery in ['auto', 'auto_silent']:
+    v = variables('Darwin', 'interpreter-' + discovery)
+    v['applications_catalog']['editors']['macos']['apps'] = [v['applications_catalog']['editors']['macos']['apps'][0]]
+    v['ansible_python_interpreter'] = discovery
+    run('interpreter-' + discovery, v)
+    assert 'changed=0' in run('interpreter-' + discovery + '-repeat', v)
 
 for arch in ['x86_64', 'aarch64']:
     name = 'typora-' + arch

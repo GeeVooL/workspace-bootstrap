@@ -54,7 +54,7 @@ for ownership in ['managed', 'unmarked', 'symlink', 'marker-symlink']:
                   ansible_facts=dict(system='Linux', architecture='aarch64', user_uid=os.getuid(),
                                      env=dict(HOME=str(home), PATH='/usr/bin:/bin')),
                   applications_home=str(home), applications_enabled_categories=['fixture'],
-                  applications_catalog={'fixture': {'linux': {'apps': [app]}}})
+                  applications_setup_categories=[], applications_catalog={'fixture': {'linux': {'apps': [app]}}})
     bins = home / '.local/bin'
     launcher = bins / 'jadx'
     run(ownership + '-check', values, check=True)

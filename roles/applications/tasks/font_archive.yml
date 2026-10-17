@@ -52,16 +52,24 @@
         path: "{{ applications_fonts_dir }}/{{ application.id }}"
         state: directory
 
+    - name: Inspect individual font destinations without following symlinks
+      ansible.builtin.stat:
+        path: "{{ applications_fonts_dir }}/{{ application.id }}/{{ item.path | basename }}"
+        follow: false
+      loop: "{{ application_font_files.files }}"
+      register: application_font_destinations
+
     - name: Install font files
       ansible.builtin.copy:
-        src: "{{ item.path }}"
-        dest: "{{ applications_fonts_dir }}/{{ application.id }}/{{ item.path | basename }}"
+        src: "{{ item.item.path }}"
+        dest: "{{ applications_fonts_dir }}/{{ application.id }}/{{ item.item.path | basename }}"
         remote_src: true
         mode: '0644'
         force: false
-      loop: "{{ application_font_files.files }}"
+      loop: "{{ application_font_destinations.results }}"
       loop_control:
-        label: "{{ item.path | basename }}"
+        label: "{{ item.item.path | basename }}"
+      when: not item.stat.exists
 
     - name: Refresh the font cache
       ansible.builtin.command:

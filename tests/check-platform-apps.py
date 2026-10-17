@@ -78,10 +78,10 @@ elif name == 'fc-cache': assert args[0] == '-f'
 elif name == 'gpg':
     if '--verify' in args:
         if (home / 'bad-signature').exists(): sys.exit(1)
-        print('[GNUPG:] VALIDSIG ' + ('BADKEY' if (home / 'bad-key').exists() else '3FEF9748469ADBE15DA7CA80AC2D62742012EA22'))
+        print('[GNUPG:] VALIDSIG ' + ('BADKEY' if (home / 'bad-key').exists() else '3FEF9748469ADBE15DA7CA80AC2D62742012EA22') + ' 2026-10-15 1792022400 0 4 0 1 10 00')
 elif name in ['dpkg-query', 'rpm']:
     if not (home / 'native-installed').exists(): sys.exit(1)
-    if name == 'dpkg-query': print('install ok installed', end='')
+    if name == 'dpkg-query': print('installed', end='')
 elif name in ['fixture-apt', 'dnf']:
     assert pathlib.Path(args[-1]).is_file()
     (home / 'native-installed').touch()
@@ -108,6 +108,7 @@ fixture.chmod(0o755)
 for font in ['JetBrainsMono-Regular.ttf', 'JetBrainsMonoNerdFont-Regular.ttf']:
     with zipfile.ZipFile(root / (font + '.zip'), 'w') as archive:
         archive.writestr('fonts/' + font, b'font fixture')
+        archive.writestr('fonts/' + font.replace('Regular', 'Bold'), b'font fixture')
 source = root / 'vendor'
 source.mkdir()
 script = source / 'after-install.sh'
@@ -141,7 +142,7 @@ def scenario(name, category, system='Linux', arch='aarch64', family='Debian', ap
                   ansible_facts=dict(system=system, architecture='arm64' if system == 'Darwin' else arch,
                                      os_family=family, pkg_mgr='apt' if family == 'Debian' else 'dnf',
                                      user_uid=501, env=dict(HOME=str(home), PATH=str(bins))),
-                  applications_catalog={category: {platform: selected}},
+                  applications_setup_categories=[], applications_catalog={category: {platform: selected}},
                   applications_search_path=str(bins), homebrew_search_path=str(bins),
                   applications_desktop_directories=str(home / 'desktop-directories'),
                   applications_fonts_dir=str(home / 'fonts'), applications_onepassword_dir=str(home / 'opt/1Password'),
@@ -186,7 +187,7 @@ for name, category, kwargs in [
     assert 'changed=0' in run(name + '-repeat', home, values)
     assert 'changed=0' in run(name + '-final-check', home, values, check=True)
     if name == 'fonts-linux':
-        assert len(list((home / 'fonts').rglob('*.ttf'))) == 2
+        assert len(list((home / 'fonts').rglob('*.ttf'))) == 4
     if name == 'flatpak':
         (home / 'remote').write_text('disabled')
         run('flatpak-disabled-check', home, values, check=True)
@@ -211,6 +212,16 @@ assert 'changed=1' in run('clt-incomplete-check', home, values, check=True)
 assert not (home / 'clt-request').exists()
 run('clt-incomplete-apply', home, values, expected=2)
 assert (home / 'clt-request').exists()
+
+home, values = scenario('font-user-link', 'fonts')
+app = values['applications_catalog']['fonts']['linux']['apps'][0]
+font_dir = home / 'fonts' / app['id']
+font_dir.mkdir(parents=True)
+link = font_dir / 'JetBrainsMono-Bold.ttf'
+link.symlink_to(home / 'missing-user-font')
+run('font-user-link', home, values)
+assert link.is_symlink() and not link.exists()
+assert 'changed=0' in run('font-user-link-repeat', home, values)
 
 for failure in ['bad-key', 'bad-signature']:
     home, values = scenario(failure, 'security', apps=['1password'])
@@ -239,4 +250,9 @@ original.write_text('preserve')
 run('unmanaged-password-check', home, values, check=True, expected=2)
 run('unmanaged-password', home, values, expected=2)
 assert original.read_text() == 'preserve'
+marker = original.parent / '.workstation-bootstrap-installing'
+for marker_text in ['', 'user marker\n']:
+    marker.write_text(marker_text)
+    run('unmanaged-password-marker', home, values, expected=2)
+    assert original.read_text() == 'preserve' and marker.read_text() == marker_text
 print(f'Platform app checks passed on {sys.platform}; external installers simulated. Logs: {root}')

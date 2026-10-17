@@ -4,6 +4,31 @@
     that: ansible_facts.architecture in ['x86_64', 'aarch64']
     fail_msg: The official Zed Linux installer requires x86_64 or aarch64.
 
+- name: Inspect Zed installation ownership
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ applications_zed_marker }}"
+    - "{{ applications_zed_dir }}"
+    - "{{ applications_home }}/.local/bin/zed"
+    - "{{ applications_home }}/.local/share/applications/dev.zed.Zed.desktop"
+  register: application_zed_paths
+
+- name: Read Zed recovery marker
+  ansible.builtin.slurp:
+    src: "{{ applications_zed_marker }}"
+  register: application_zed_marker_content
+  when: application_zed_paths.results[0].stat.isreg | default(false)
+
+- name: Preserve incomplete unmarked Zed installations
+  ansible.builtin.assert:
+    that:
+      - not application_zed_paths.results[0].stat.exists or (application_zed_marker_content.content | default('') | b64decode == 'Managed by Workstation Bootstrap; Zed installation pending.\n')
+      - (application_zed_paths.results[1:] | selectattr('stat.exists') | list | length == 0) or (application_zed_marker_content.content | default('') | b64decode == 'Managed by Workstation Bootstrap; Zed installation pending.\n')
+      - not (application_zed_paths.results[1].stat.islnk | default(false))
+    fail_msg: Preserving an incomplete unmarked Zed installation or link. Move it aside or repair it manually before retrying.
+
 - name: Preview official script installation
   ansible.builtin.debug:
     msg: "{{ application.name }} will be installed using {{ application.url }} as the current user."
@@ -25,6 +50,18 @@
         dest: "{{ application_script.path }}/install.sh"
         mode: '0600'
 
+    - name: Create Zed installation parent
+      ansible.builtin.file:
+        path: "{{ applications_zed_marker | dirname }}"
+        state: directory
+
+    - name: Record pending Zed installation before invoking the vendor
+      ansible.builtin.copy:
+        content: "Managed by Workstation Bootstrap; Zed installation pending.\n"
+        dest: "{{ applications_zed_marker }}"
+        force: false
+        mode: '0600'
+
     - name: Run official stable installer as the current user
       ansible.builtin.command:
         argv: [/bin/sh, "{{ application_script.path }}/install.sh"]
@@ -34,6 +71,23 @@
         ZED_VERSION: latest
         TMPDIR: "{{ application_script.path }}"
       changed_when: true
+
+    - name: Verify the completed Zed payload
+      ansible.builtin.stat:
+        path: "{{ applications_zed_dir }}/bin/zed"
+        follow: true
+      register: application_zed_payload
+
+    - name: Require an executable Zed payload
+      ansible.builtin.assert:
+        that:
+          - application_zed_payload.stat.isreg | default(false)
+          - application_zed_payload.stat.executable | default(false)
+
+    - name: Clear completed Zed recovery marker
+      ansible.builtin.file:
+        path: "{{ applications_zed_marker }}"
+        state: absent
 
   always:
     - name: Remove temporary installer script and downloads

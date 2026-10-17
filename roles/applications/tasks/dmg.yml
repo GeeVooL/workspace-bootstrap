@@ -8,6 +8,15 @@
 - name: Install official macOS disk image
   when: not ansible_check_mode
   block:
+    - name: Resolve Python for installer helpers
+      ansible.builtin.include_tasks: python_runtime.yml
+
+    - name: Reset per-installation disk image state
+      ansible.builtin.set_fact:
+        application_dmg: {}
+        application_mount: {}
+        application_dmg_stage: {}
+
     - name: Create temporary disk image directory
       ansible.builtin.tempfile:
         state: directory
@@ -31,18 +40,69 @@
         path: "{{ applications_macos_install_dir }}"
         state: directory
 
-    - name: Copy application bundle from official disk image
+    - name: Create staging beside the final application bundle
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ applications_macos_install_dir }}"
+        prefix: .workstation-dmg-
+      register: application_dmg_stage
+
+    - name: Copy application bundle into staging
       ansible.builtin.command:
-        argv: [ditto, "{{ application_dmg.path }}/mount/{{ application.bundle }}", "{{ applications_macos_install_dir }}/{{ application.bundle }}"]
-        creates: "{{ applications_macos_install_dir }}/{{ application.bundle }}"
+        argv: [ditto, "{{ application_dmg.path }}/mount/{{ application.bundle }}", "{{ application_dmg_stage.path }}/{{ application.bundle }}"]
       changed_when: true
 
+    - name: Require a valid bundle with an executable before publishing
+      ansible.builtin.command:
+        argv:
+          - "{{ application_python_runtime.ansible_facts.ansible_python.executable }}"
+          - -c
+          - |
+            import os, plistlib, sys
+            from pathlib import Path
+            bundle = Path(sys.argv[1])
+            with (bundle / 'Contents/Info.plist').open('rb') as info:
+                executable = plistlib.load(info).get('CFBundleExecutable')
+            if not isinstance(executable, str) or not executable or '/' in executable:
+                raise ValueError('Bundle has no valid CFBundleExecutable')
+            binary = bundle / 'Contents/MacOS' / executable
+            if not binary.is_file() or not os.access(binary, os.X_OK):
+                raise ValueError('Bundle executable is missing or not executable')
+          - "{{ application_dmg_stage.path }}/{{ application.bundle }}"
+      changed_when: false
+
+    - name: Publish the complete bundle without replacing an existing destination
+      ansible.builtin.script:
+        cmd: >-
+          {{ (role_path ~ '/files/publish-directory.py') | quote }}
+          {{ (application_dmg_stage.path ~ "/" ~ application.bundle) | quote }}
+          {{ (applications_macos_install_dir ~ "/" ~ application.bundle) | quote }}
+        executable: "{{ application_python_runtime.ansible_facts.ansible_python.executable }}"
+      changed_when: true
+
+    - name: Inspect whether bundle publication was skipped
+      ansible.builtin.stat:
+        path: "{{ application_dmg_stage.path }}/{{ application.bundle }}"
+        follow: false
+      register: application_dmg_unpublished
+
+    - name: Report a destination that appeared during installation
+      ansible.builtin.assert:
+        that: not application_dmg_unpublished.stat.exists
+        fail_msg: "Preserving existing {{ applications_macos_install_dir }}/{{ application.bundle }}; bundle publication was skipped."
+
   always:
+    - name: Remove partial or completed bundle staging
+      ansible.builtin.file:
+        path: "{{ application_dmg_stage.path }}"
+        state: absent
+      when: application_dmg_stage.path is defined
+
     - name: Unmount disk image
       ansible.builtin.command:
         argv: [hdiutil, detach, "{{ application_dmg.path }}/mount"]
       changed_when: true
-      when: application_mount is defined and application_mount is succeeded and application_mount is not skipped
+      when: application_mount.rc is defined and application_mount.rc == 0
 
     - name: Remove temporary disk image
       ansible.builtin.file:

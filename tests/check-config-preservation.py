@@ -35,7 +35,7 @@ for position in range(4):
     home = root / ('ghostty-' + str(position))
     xdg = home / '.config/ghostty'
     mac = home / 'Library/Application Support/com.mitchellh.ghostty'
-    paths = [xdg / 'config.ghostty', xdg / 'config', mac / 'config.ghostty', mac / 'config']
+    paths = [xdg / 'config', xdg / 'config.ghostty', mac / 'config', mac / 'config.ghostty']
     originals = {}
     for i, path in enumerate(paths):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,7 +48,25 @@ for position in range(4):
     assert 'changed=0' in run('ghostty-command-' + str(position), root / 'ghostty.yml', values)
     for path, content in originals.items():
         assert path.read_text() == content and path.stat().st_mode & 0o777 == 0o600
-# Keep the last existing legacy path, without creating a competing new file.
+# Ghostty accepts a BOM on each file; preserve its initial command.
+home = root / 'ghostty-bom'
+xdg = home / '.config/ghostty/config'
+last = home / 'Library/Application Support/com.mitchellh.ghostty/config.ghostty'
+xdg.parent.mkdir(parents=True)
+last.parent.mkdir(parents=True)
+xdg.write_text('\ufeffcommand = /bin/bash\n')
+last.write_text('# Managed by Workstation Bootstrap.\nfont-size = 15\n')
+values = dict(shell_home=str(home), terminal_config_root=str(home / '.config'), fish_executable='/fixture/fish',
+              ansible_facts=dict(system='Darwin', user_dir=str(home), env=dict(HOME=str(home))))
+assert 'changed=0' in run('ghostty-bom', root / 'ghostty.yml', values)
+assert 'command' not in last.read_text()
+# The modern file is loaded after the legacy file and is the append target.
+xdg.write_text('theme = custom\n')
+run('ghostty-load-order', root / 'ghostty.yml', values)
+assert last.read_text().endswith('command = /fixture/fish\n')
+assert xdg.read_text() == 'theme = custom\n'
+assert 'changed=0' in run('ghostty-load-order-repeat', root / 'ghostty.yml', values)
+# Preserve unmarked legacy paths, even when they have no launch configuration.
 for system in ['Linux', 'Darwin']:
     home = root / ('legacy-' + system)
     path = home / '.config/ghostty/config'
@@ -58,13 +76,36 @@ for system in ['Linux', 'Darwin']:
                   ansible_facts=dict(system=system, user_dir=str(home), env=dict(HOME=str(home))))
     run(system + '-preview', root / 'ghostty.yml', values, check=True)
     assert path.read_text() == 'theme = existing\n'
-    run(system + '-append', root / 'ghostty.yml', values)
-    assert path.read_text() == 'theme = existing\ncommand = /fixture/fish\n'
+    assert 'changed=0' in run(system + '-preserve', root / 'ghostty.yml', values)
+    assert path.read_text() == 'theme = existing\n'
     assert not (path.parent / 'config.ghostty').exists()
+    assert not list(path.parent.glob('config.*~'))
     assert 'changed=0' in run(system + '-repeat', root / 'ghostty.yml', values)
+    # Managed files retain personal settings and permissions when adding a command.
+    marked = '# Managed by Workstation Bootstrap.\ntheme = existing\nfont-size = 17\n'
+    path.write_text(marked)
+    path.chmod(0o600)
+    run(system + '-managed-preview', root / 'ghostty.yml', values, check=True)
+    assert path.read_text() == marked
+    run(system + '-managed-append', root / 'ghostty.yml', values)
+    assert path.read_text() == marked + 'command = /fixture/fish\n'
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert list(path.parent.glob('config.*~'))
+    assert 'changed=0' in run(system + '-managed-repeat', root / 'ghostty.yml', values)
     path.write_text('config-file = other-config\n')
     assert 'changed=0' in run(system + '-includes', root / 'ghostty.yml', values)
     assert path.read_text() == 'config-file = other-config\n'
+
+for system in ['Linux', 'Darwin']:
+    home = root / ('new-ghostty-' + system)
+    path = home / 'new/config.ghostty'
+    values = dict(shell_home=str(home), terminal_config_root=str(home / '.config'), ghostty_config_path=str(path),
+                  fish_executable='/fixture/fish', ansible_facts=dict(system=system, user_dir=str(home), env=dict(HOME=str(home))))
+    run(system + '-new-preview', root / 'ghostty.yml', values, check=True)
+    assert not home.exists()
+    run(system + '-new-create', root / 'ghostty.yml', values)
+    assert path.read_text() == '# Managed by Workstation Bootstrap.\ncommand = /fixture/fish\n'
+    assert 'changed=0' in run(system + '-new-repeat', root / 'ghostty.yml', values)
 
 home = root / 'terminal'
 config = home / '.config/fish'

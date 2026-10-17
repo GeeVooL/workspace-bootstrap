@@ -49,6 +49,7 @@ if name == 'container':
         assert not (root / 'busy').exists()
         (root / 'running').unlink()
     elif args == ['system', 'start', '--enable-kernel-install']:
+        if (root / 'failed-start').exists(): sys.exit(1)
         (root / 'running').touch()
     else: raise AssertionError(args)
 elif name == 'launchctl':
@@ -79,9 +80,10 @@ variables = {
     'ansible_become': False,  # Fixture commands run unprivileged, including installer.
     'ansible_facts': {'system': 'Darwin', 'architecture': 'arm64',
                       'distribution_version': '26.0', 'user_uid': 501},
-    'applications_catalog': {'development': {'macos': {'apple_container': True}}},
+    'applications_setup_categories': [], 'applications_catalog': {'development': {'macos': {'apple_container': True}}},
     'apple_container_release_url': base + '/release.json',
     'apple_container_executable': str(root / 'container'),
+    'apple_container_recovery_marker': str(root / 'start-pending'),
     'apple_container_installer_executable': str(root / 'installer'),
     'apple_container_pkgutil_executable': str(root / 'pkgutil'),
     'apple_container_launchctl_executable': str(root / 'launchctl'),
@@ -137,6 +139,22 @@ try:
     assert installed() == 3
     assert (root / 'running').exists()
     assert 'changed=0' in run('upgrade-repeat')
+    for fresh in [False, True]:
+        (root / 'running').touch()
+        if fresh:
+            (root / 'running').unlink()
+            (root / 'container').unlink()
+        else:
+            (root / 'version').write_text('1.4.0')
+        (root / 'failed-start').touch()
+        run('failed-start-' + str(fresh), expected=2)
+        assert (root / 'start-pending').exists()
+        before_install = installed()
+        (root / 'failed-start').unlink()
+        run('retry-start-' + str(fresh))
+        assert (root / 'running').exists() and not (root / 'start-pending').exists()
+        assert installed() == before_install
+        assert 'changed=0' in run('retry-start-repeat-' + str(fresh))
     (root / 'version').write_text('9.0.0')
     assert 'changed=0' in run('no-downgrade')
     (root / 'version').write_text('1.4.0')

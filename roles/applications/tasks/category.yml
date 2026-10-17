@@ -1,4 +1,22 @@
 ---
+- name: Validate the selected category and platform definition
+  ansible.builtin.assert:
+    that:
+      - applications_catalog[application_category] is mapping
+      - category_definition is mapping
+  vars:
+    category_definition: "{{ applications_catalog[application_category]['macos' if ansible_facts.system == 'Darwin' else 'linux'] | default({}) }}"
+
+- name: Validate selected platform collections
+  ansible.builtin.assert:
+    that:
+      - category_definition[item] | default([]) is sequence
+      - category_definition[item] | default([]) is not string
+      - category_definition[item] | default([]) is not mapping
+  loop: [formulae, casks, packages, apps]
+  vars:
+    category_definition: "{{ applications_catalog[application_category]['macos' if ansible_facts.system == 'Darwin' else 'linux'] | default({}) }}"
+
 - name: Select applications permitted by the active workplace policy
   ansible.builtin.set_fact:
     category_apps: "{{ lookup('ansible.builtin.template', role_path ~ '/templates/selected-applications.json.j2') | from_json }}"

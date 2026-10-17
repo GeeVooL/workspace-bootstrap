@@ -99,9 +99,22 @@ assert 'changed=0' in deploy('repaired-repeat')
 assert 'changed=0' in deploy('repaired-check', '--check')
 assert (config / 'extra.fish').read_text() == '# Keep this additional plugin\n'
 assert 'example/extra' in (config / 'fish_plugins').read_text()
+# Required remote names normalize just like Fisher, while local paths retain case.
+case_required = root / 'case-required'
+case_required.write_text(required.read_text().replace('patrickf1/', 'PatrickF1/'))
+assert subprocess.check_output([fish, str(installer), 'check', '-', str(case_required)], env=env, text=True) == ''
+local_plugin = (root / 'MixedCasePlugin').resolve()
+local_plugin.mkdir()
+local_required = root / 'local-required'
+local_required.write_text(str(local_plugin) + '\n')
+with (config / 'fish_plugins').open('a') as output: output.write(str(local_plugin) + '\n')
+subprocess.run([fish, '-c', 'set -l key (string escape --style=var -- $argv[1]); set -Ua _fisher_plugins $argv[1]; set -U _fisher_{$key}_files $argv[2]', str(local_plugin), str(config / 'extra.fish')], env=env, check=True)
+assert subprocess.check_output([fish, str(installer), 'check', '-', str(local_required)], env=env, text=True) == ''
 # A nominally successful Fisher call must not hide an incomplete repair.
 tracked.unlink()
 (config / 'fail-download').touch()
 deploy('failed-repair', expected=2)
 assert pending() == ['patrickf1/fzf.fish']
+assert 'example/extra' in (config / 'fish_plugins').read_text()
+assert str(local_plugin) in (config / 'fish_plugins').read_text()
 print('Fisher repair checks passed on', sys.platform, '; logs:', root)

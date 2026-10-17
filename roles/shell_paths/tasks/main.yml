@@ -44,15 +44,28 @@
           - "'\n' not in item"
       loop: "{{ workstation_bin_paths }}"
 
-    - name: Find the existing Bash login file in Bash precedence order
+    - name: Inspect Bash login files in Bash precedence order
       ansible.builtin.stat:
         path: "{{ shell_home }}/{{ item }}"
+        follow: true
       loop: [.bash_profile, .bash_login, .profile]
       register: shell_bash_profiles
+      # Preserve unreadable traversal errors as blockers; Bash skips only missing files.
+      failed_when: false
 
-    - name: Select the active Bash login file without shadowing an existing one
+    - name: Use a new profile when no Bash login file exists
       ansible.builtin.set_fact:
-        shell_bash_login_path: "{{ (shell_bash_profiles.results | selectattr('stat.exists') | map(attribute='stat.path') | list | first) | default(shell_home ~ '/.profile') }}"
+        shell_bash_login_path: "{{ shell_home }}/.profile"
+
+    - name: Select the first existing or unreadable Bash login path
+      ansible.builtin.set_fact:
+        shell_bash_login_path: "{{ shell_home }}/{{ shell_profile.item }}"
+      # Reverse assignment keeps precedence without treating unreadable files as absent.
+      loop: "{{ shell_bash_profiles.results | reverse | list }}"
+      loop_control:
+        loop_var: shell_profile
+        label: "{{ shell_profile.item }}"
+      when: shell_profile.stat.exists | default(true)
 
     - name: Create shell configuration directories
       ansible.builtin.file:
@@ -95,18 +108,18 @@
         - "{{ shell_zdotdir }}/.zprofile"
       register: shell_startup_files
 
-    - name: Preserve symlinks and nonregular shell startup files
+    - name: Preserve symlinks, nonregular, and unreadable shell startup files
       ansible.builtin.debug:
-        msg: "Preserving {{ item.item }}: it is not a regular file."
+        msg: "Preserving {{ item.item }}: it is not a readable regular file."
       loop: "{{ shell_startup_files.results }}"
       loop_control:
         label: "{{ item.item }}"
-      when: item.stat.exists and not (item.stat.isreg | default(false))
+      when: item.stat.exists and (not (item.stat.isreg | default(false)) or not (item.stat.readable | default(false)))
 
     - name: Load executable paths in interactive and login shells
       when:
         - managed_config_owned
-        - not item.stat.exists or item.stat.isreg | default(false)
+        - not item.stat.exists or ((item.stat.isreg | default(false)) and (item.stat.readable | default(false)))
       ansible.builtin.blockinfile:
         path: "{{ item.item }}"
         create: true

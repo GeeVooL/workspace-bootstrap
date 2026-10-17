@@ -21,25 +21,38 @@
 
 - name: Preserve existing launch commands and included configuration
   ansible.builtin.set_fact:
-    ghostty_has_launch_config: "{{ (ghostty_config_contents.results | selectattr('content', 'defined') | map(attribute='content') | map('b64decode') | join('\n')) is search('(?m)^\\s*(command|initial-command|config-file)\\s*=') }}"
+    ghostty_has_launch_config: "{{ (ghostty_config_contents.results | selectattr('content', 'defined') | map(attribute='content') | map('b64decode') | map('regex_replace', '^\ufeff', '') | join('\n')) is search('(?m)^\\s*(command|initial-command|config-file)\\s*=') }}"
     ghostty_target_path: "{{ (ghostty_config_stats.results | selectattr('stat.exists') | map(attribute='item') | list | last) | default(ghostty_config_path | default(ghostty_default_config_path)) }}"
+
+- name: Check ownership of the selected Ghostty file
+  ansible.builtin.set_fact:
+    ghostty_target_exists: "{{ ghostty_config_stats.results | selectattr('item', 'equalto', ghostty_target_path) | selectattr('stat.exists') | list | length > 0 }}"
+    ghostty_target_owned: "{{ ((ghostty_config_contents.results | selectattr('content', 'defined') | selectattr('item.item', 'equalto', ghostty_target_path) | map(attribute='content') | map('b64decode') | list | first) | default('')).startswith('# Managed by Workstation Bootstrap.') }}"
 
 - name: Explain preserved Ghostty launch configuration
   ansible.builtin.debug:
-    msg: Preserving existing Ghostty command, included configuration, or nonregular configuration path; no launch command will be added.
-  when: ghostty_has_launch_config or ghostty_has_unmanaged_path
+    msg: Preserving existing Ghostty command, included configuration, symlink, or unmarked configuration; no launch command will be added.
+  when: ghostty_has_launch_config or ghostty_has_unmanaged_path or (ghostty_target_exists and not ghostty_target_owned)
 
 - name: Add a launch command only when no loaded configuration defines one
-  when: not ghostty_has_launch_config and not ghostty_has_unmanaged_path
+  when: not ghostty_has_launch_config and not ghostty_has_unmanaged_path and (not ghostty_target_exists or ghostty_target_owned)
   block:
     - name: Create the Ghostty configuration directory without changing its permissions
       ansible.builtin.file:
         path: "{{ ghostty_target_path | dirname }}"
         state: directory
 
-    - name: Append the missing Fish launch command
+    - name: Create a marked Ghostty configuration when no file exists
+      ansible.builtin.copy:
+        content: "# Managed by Workstation Bootstrap.\ncommand = {{ fish_executable | quote }}\n"
+        dest: "{{ ghostty_target_path }}"
+        mode: '0644'
+        force: false
+      when: not ghostty_target_exists
+
+    - name: Append the missing Fish launch command to a managed file
       ansible.builtin.lineinfile:
         path: "{{ ghostty_target_path }}"
-        line: "command = {{ fish_executable }}"
-        create: true
+        line: "command = {{ fish_executable | quote }}"
         backup: true
+      when: ghostty_target_exists and ghostty_target_owned

@@ -80,7 +80,7 @@
         managed_config_path: "{{ terminal_config_root }}/fish/conf.d/{{ terminal_snippet }}"
         managed_config_content: "{{ lookup('file', ansible_parent_role_paths[0] ~ '/files/fish/' ~ terminal_snippet, rstrip=false) }}"
         managed_config_legacy_contents: ["{{ managed_config_content.split('\n', 1)[1] }}"]
-        managed_config_validate: "{{ fish_executable }} --no-execute %s"
+        managed_config_validate: "{{ fish_executable | quote }} --no-execute %s"
       loop:
         - tool-aliases.fish
         - git-abbreviations.fish

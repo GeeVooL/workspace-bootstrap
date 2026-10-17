@@ -71,7 +71,7 @@ def scenario(name, system='Linux', distribution='Ubuntu', manager='apt', snap=Fa
         ansible_facts=dict(system=system, distribution=distribution, pkg_mgr=manager,
                            distribution_major_version='44', architecture='arm64' if system == 'Darwin' else 'aarch64',
                            user_uid=os.getuid(), env=dict(HOME=str(home), PATH=str(bins))),
-        applications_catalog={'utilities': {platform: {'apps': [app]}}},
+        applications_setup_categories=[], applications_catalog={'utilities': {platform: {'apps': [app]}}},
         applications_search_path=str(bins), homebrew_search_path=str(bins),
         applications_macos_dirs=[str(home / 'Applications')],
         applications_macos_install_dir=str(home / 'Applications'),

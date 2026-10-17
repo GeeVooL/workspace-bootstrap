@@ -1,4 +1,13 @@
 ---
+- name: Validate application installer before discovery
+  ansible.builtin.assert:
+    that:
+      - application is mapping
+      - application.name is string
+      - application.commands is sequence and application.commands is not string and application.commands is not mapping
+      - application.installer in (['homebrew', 'dmg', 'mas', 'command_line_tools'] if ansible_facts.system == 'Darwin' else ['native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'snapd', 'upstream_archive'])
+    fail_msg: "Invalid application definition or unsupported installer for this platform: {{ application }}"
+
 - name: Look for existing application commands
   ansible.builtin.shell: "command -v {{ item | quote }}"
   args:
@@ -14,6 +23,7 @@
 - name: Check known installation locations
   ansible.builtin.stat:
     path: "{{ item }}"
+    follow: true
   loop: >-
     {{ ((applications_macos_dirs + [applications_macos_install_dir]) | unique | map('regex_replace', '$', '/' + application.bundle) | list)
        if ansible_facts.system == 'Darwin' and application.bundle is defined else
@@ -30,11 +40,38 @@
     - ansible_facts.system == 'Linux'
     - ansible_facts.architecture == 'aarch64'
 
+- name: Inspect Zed pending integration
+  ansible.builtin.stat:
+    path: "{{ applications_zed_marker }}"
+    follow: false
+  register: application_zed_pending
+  when: application.installer == 'script'
+
 - name: Determine whether application is already installed
   ansible.builtin.set_fact:
     application_present: >-
       {{ (application_commands.results | selectattr('rc', 'equalto', 0) | list | length > 0)
-         or (application_locations.results | selectattr('stat.exists') | list | length > 0) }}
+         or (application_locations.results | selectattr('stat.exists') | selectattr('stat.executable', 'defined') | selectattr('stat.executable') | selectattr('stat.isreg') | list | length > 0) if application.installer == 'script' else
+         ((application_commands.results | selectattr('rc', 'equalto', 0) | list | length > 0)
+         or (application_locations.results | selectattr('stat.exists') | list | length > 0)) }}
+
+- name: Inspect unresolved installation locations without following links
+  ansible.builtin.stat:
+    path: "{{ item.item }}"
+    follow: false
+  loop: "{{ application_locations.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not application_present and not item.stat.exists and application.installer != 'script'
+  register: application_unresolved_locations
+
+- name: Preserve dangling installation paths
+  ansible.builtin.assert:
+    that: not item.stat.exists
+    fail_msg: "Preserving unresolved installation path {{ item.item.item }}; repair or move it before installing {{ application.name }}."
+  loop: "{{ application_unresolved_locations.results | selectattr('stat', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.item }}"
 
 - name: Install missing Homebrew application
   ansible.builtin.include_role:
@@ -50,7 +87,7 @@
 - name: Install missing application using the selected installer
   ansible.builtin.include_tasks: "{{ application.installer }}.yml"
   when:
-    - not application_present or application.installer in ['flatpak', 'command_line_tools', 'snapd'] or (application_incomplete_marker.stat.isreg | default(false))
+    - not application_present or application.installer in ['flatpak', 'command_line_tools', 'snapd'] or (application_incomplete_marker.stat.isreg | default(false)) or (application_zed_pending.stat.exists | default(false))
     - application.installer in ['dmg', 'native', 'native_or_snap', 'script', 'snap_or_copr', 'onepassword', 'font_archive', 'flatpak', 'mas', 'command_line_tools', 'snapd', 'upstream_archive']
 
 - name: Reconcile launchers for an existing repository-owned archive

@@ -19,14 +19,17 @@
 - name: Install missing official upstream archive
   when: not ansible_check_mode
   block:
+    - name: Resolve Python for installer helpers
+      ansible.builtin.include_tasks: python_runtime.yml
+
     - name: Resolve current stable upstream download and checksum
       ansible.builtin.script:
         cmd: >-
-          {{ role_path }}/files/resolve-upstream.py
+          {{ (role_path ~ '/files/resolve-upstream.py') | quote }}
           {{ application.metadata_kind | quote }}
           {{ application.metadata_url | quote }}
           {{ application.asset_pattern | default('') | quote }}
-        executable: "{{ ansible_python_interpreter | default(ansible_facts.python.executable) }}"
+        executable: "{{ application_python_runtime.ansible_facts.ansible_python.executable }}"
       register: upstream_metadata_result
       changed_when: false
 
@@ -62,10 +65,10 @@
     - name: Extract the data archive from Google's Debian package
       ansible.builtin.script:
         cmd: >-
-          {{ role_path }}/files/extract-deb-data.py
+          {{ (role_path ~ '/files/extract-deb-data.py') | quote }}
           {{ (upstream_temp.path ~ '/download.deb') | quote }}
           {{ (upstream_temp.path ~ '/data.tar') | quote }}
-        executable: "{{ ansible_python_interpreter | default(ansible_facts.python.executable) }}"
+        executable: "{{ application_python_runtime.ansible_facts.ansible_python.executable }}"
       when: application.archive_format == 'deb'
 
     - name: Extract upstream archive
@@ -118,9 +121,12 @@
         mode: '0644'
 
     - name: Install verified archive without replacing an existing destination
-      ansible.builtin.command:
-        argv: [mv, -n, "{{ upstream_root }}", "{{ application.destination }}"]
-        creates: "{{ application.destination }}"
+      ansible.builtin.script:
+        cmd: >-
+          {{ (role_path ~ '/files/publish-directory.py') | quote }}
+          {{ (upstream_root) | quote }}
+          {{ (application.destination) | quote }}
+        executable: "{{ application_python_runtime.ansible_facts.ansible_python.executable }}"
       changed_when: true
 
     - name: Reconcile launchers for the installed archive

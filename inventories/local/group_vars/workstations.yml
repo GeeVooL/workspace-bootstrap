@@ -110,12 +110,11 @@ applications_catalog:
           id: zed
           commands: [zed, zeditor, zedit]
           paths:
-            - "{{ applications_home }}/.local/zed.app"
+            - "{{ applications_home }}/.local/zed.app/bin/zed"
             - "{{ applications_home }}/.local/bin/zed"
-            - "{{ applications_home }}/.local/share/applications/dev.zed.Zed.desktop"
             - /opt/zed.app/bin/zed
-            - "{{ applications_home }}/.local/share/flatpak/app/dev.zed.Zed"
-            - /var/lib/flatpak/app/dev.zed.Zed
+            - "{{ applications_home }}/.local/share/flatpak/app/dev.zed.Zed/current/active/files/bin/zed"
+            - /var/lib/flatpak/app/dev.zed.Zed/current/active/files/bin/zed
           installer: script
           url: https://zed.dev/install.sh
 

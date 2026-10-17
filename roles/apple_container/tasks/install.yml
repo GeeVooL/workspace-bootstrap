@@ -41,6 +41,22 @@
          (apple_container_installed.stdout | default('') | regex_search('[0-9]+\.[0-9]+\.[0-9]+') | default('0.0.0', true))
          is version(apple_container_version, '<') }}
 
+- name: Inspect pending Apple container service recovery
+  ansible.builtin.stat:
+    path: "{{ apple_container_recovery_marker }}"
+    follow: false
+  register: apple_container_pending
+
+- name: Read the service recovery marker
+  ansible.builtin.slurp:
+    src: "{{ apple_container_recovery_marker }}"
+  register: apple_container_pending_content
+  when: apple_container_pending.stat.isreg | default(false)
+
+- name: Preserve unmarked recovery paths
+  ansible.builtin.assert:
+    that: not apple_container_pending.stat.exists or (apple_container_pending_content.content | default('') | b64decode == 'Managed by Workstation Bootstrap; start Apple container service.\n')
+
 - name: Preview Apple container installation or upgrade
   ansible.builtin.debug:
     msg: "Will install Apple container {{ apple_container_version }} using its signed package (requires sudo)."
@@ -95,6 +111,14 @@
         fail_msg: Stop your running containers before upgrading Apple Container; no workloads have been stopped.
       when: apple_container_was_running
 
+    - name: Persist required service recovery before changing binaries or service state
+      ansible.builtin.copy:
+        content: "Managed by Workstation Bootstrap; start Apple container service.\n"
+        dest: "{{ apple_container_recovery_marker }}"
+        mode: '0600'
+        force: false
+      when: apple_container_was_running or (not apple_container_binary.stat.exists and apple_container_start_after_install | bool)
+
     - name: Stop the idle service before replacing its binaries
       ansible.builtin.command:
         argv: ["{{ apple_container_executable }}", system, stop]
@@ -117,11 +141,6 @@
       failed_when: >-
         (apple_container_verified.stdout | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) != apple_container_version
 
-    - name: Start the service after a fresh installation
-      ansible.builtin.command:
-        argv: ["{{ apple_container_executable }}", system, start, --enable-kernel-install]
-      changed_when: true
-      when: not apple_container_binary.stat.exists and apple_container_start_after_install | bool
 
   always:
     - name: Remove the temporary Apple container installer directory
@@ -130,8 +149,9 @@
         state: absent
       when: apple_container_temp.path is defined
 
-    - name: Restore the previously running service even if installation fails
-      ansible.builtin.command:
-        argv: ["{{ apple_container_executable }}", system, start, --enable-kernel-install]
-      changed_when: true
-      when: apple_container_stopped is defined and apple_container_stopped is changed
+    - name: Recover requested service state even after installation failure
+      ansible.builtin.include_tasks: recover.yml
+
+- name: Retry pending service recovery independently of version upgrades
+  ansible.builtin.include_tasks: recover.yml
+  when: not apple_container_needs_install

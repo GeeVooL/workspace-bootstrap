@@ -17,7 +17,7 @@
 
 - name: Check native package database
   ansible.builtin.command:
-    argv: "{{ ['dpkg-query', '-W', '-f=${Status}', application.package] if application_package_format == 'deb' else ['rpm', '-q', application.package] }}"
+    argv: "{{ ['dpkg-query', '-W', '-f=${db:Status-Status}', application.package] if application_package_format == 'deb' else ['rpm', '-q', application.package] }}"
   register: application_package_query
   changed_when: false
   failed_when: application_package_query.rc not in [0, 1]
@@ -25,7 +25,7 @@
 
 - name: Determine whether native package is installed
   ansible.builtin.set_fact:
-    application_package_present: "{{ application_package_query.rc == 0 and (application_package_format == 'rpm' or application_package_query.stdout == 'install ok installed') }}"
+    application_package_present: "{{ application_package_query.rc == 0 and (application_package_format == 'rpm' or application_package_query.stdout == 'installed') }}"
 
 - name: Install missing official native package
   when: not application_package_present
@@ -74,7 +74,7 @@
         # requiring external Ansible collections or package-manager Python bindings.
         - name: Install official RPM package with the native package manager
           ansible.builtin.command:
-            argv: "{{ (['zypper', '--non-interactive', 'install'] if ansible_facts.pkg_mgr == 'zypper' else [ansible_facts.pkg_mgr, 'install', '-y']) + [application_package_download.path + '/editor.rpm'] }}"
+            argv: "{{ (['zypper', '--non-interactive', 'install'] if ansible_facts.pkg_mgr == 'zypper' else [ansible_facts.pkg_mgr, '--setopt=localpkg_gpgcheck=1', 'install', '-y']) + [application_package_download.path + '/editor.rpm'] }}"
           become: true
           changed_when: true
           when: application_package_format == 'rpm'

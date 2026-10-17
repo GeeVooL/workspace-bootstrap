@@ -29,6 +29,8 @@ entries = [
     {'name': 'denied', 'workplace_permitted': False},
     {'name': 'unmarked'},
     {'name': 'string-flag', 'workplace_permitted': 'true'},
+    {'name': 'integer-flag', 'workplace_permitted': 1},
+    {'name': 'float-flag', 'workplace_permitted': 1.0},
 ]
 definition = {kind: copy.deepcopy(entries) + ['legacy']
               for kind in ('formulae', 'casks', 'packages')}
@@ -45,7 +47,7 @@ def run(name, system, policy=None, definition_override=None, extra=None, check=F
     values = {
         'ansible_python_interpreter': sys.executable,
         'ansible_facts': {'system': system, 'user_uid': os.getuid()},
-        'applications_catalog': {'test': {platform: definition_override or definition}},
+        'applications_setup_categories': [], 'applications_catalog': {'test': {platform: definition_override or definition}},
         'record_dir': str(record),
     }
     if policy is not None:
@@ -79,6 +81,9 @@ for system in ('Darwin', 'Linux'):
             assert selected[kind] == [entry['name'] for entry in entries] + ['legacy']
         assert selected['apps'] == entries and selected['apple_container'] is True
     for label, container in [('denied', {'workplace_permitted': False}),
+                             ('integer', {'workplace_permitted': 1}),
+                             ('float', {'workplace_permitted': 1.0}),
+                             ('string', {'workplace_permitted': 'true'}),
                              ('legacy', True), ('disabled', {'enabled': False, 'workplace_permitted': True})]:
         record, _ = run(name + '-container-' + label, system, True,
                         dict(definition, apple_container=container))

@@ -38,6 +38,11 @@
           - macos_brew_stat.stat.exists or macos_homebrew_executable == macos_homebrew_default
         fail_msg: An existing custom Homebrew executable must be executable; bootstrap uses the architecture's standard prefix.
 
+    - name: Reject unsupported fresh Intel Homebrew bootstrap
+      ansible.builtin.assert:
+        that: macos_brew_stat.stat.exists or ansible_facts.architecture == 'arm64'
+        fail_msg: The current official Homebrew installer supports fresh Apple Silicon installations only. Existing Intel Homebrew installations remain supported.
+
     - name: Keep shell configuration on the same Homebrew installation
       ansible.builtin.set_fact:
         workstation_homebrew_executable: "{{ macos_homebrew_executable }}"
@@ -67,14 +72,33 @@
             dest: "{{ macos_brew_installer.path }}"
             mode: '0600'
 
+        - name: Create a private bootstrap authentication helper directory
+          ansible.builtin.tempfile:
+            state: directory
+            suffix: -homebrew-bootstrap-askpass
+          register: macos_brew_bootstrap_askpass
+
+        - name: Provide bootstrap administrator authentication
+          ansible.builtin.copy:
+            src: sudo-askpass
+            dest: "{{ macos_brew_bootstrap_askpass.path }}/askpass"
+            mode: '0700'
+
         - name: Run the Homebrew installer as the current user
           ansible.builtin.command:
             argv: [/bin/bash, "{{ macos_brew_installer.path }}"]
             creates: "{{ macos_homebrew_executable }}"
           environment:
             NONINTERACTIVE: '1'
+            SUDO_ASKPASS: "{{ homebrew_sudo_askpass | default(macos_brew_bootstrap_askpass.path ~ '/askpass', true) }}"
 
       always:
+        - name: Remove bootstrap authentication helper
+          ansible.builtin.file:
+            path: "{{ macos_brew_bootstrap_askpass.path }}"
+            state: absent
+          when: macos_brew_bootstrap_askpass.path is defined
+
         - name: Remove temporary installer
           ansible.builtin.file:
             path: "{{ macos_brew_installer.path }}"
@@ -123,10 +147,33 @@
         - not ansible_check_mode
         - macos_missing_formulae | length > 0
 
-    - name: Install optional casks
-      ansible.builtin.command:
-        argv: "{{ [macos_homebrew_executable, 'install', '--cask'] + macos_missing_casks }}"
-      changed_when: true
+    - name: Install optional casks with a macOS authentication channel
       when:
         - not ansible_check_mode
         - macos_missing_casks | length > 0
+      block:
+        - name: Create a temporary private askpass directory
+          ansible.builtin.tempfile:
+            state: directory
+            suffix: -homebrew-askpass
+          register: macos_homebrew_askpass_temp
+
+        - name: Provide the macOS password dialog helper
+          ansible.builtin.copy:
+            src: sudo-askpass
+            dest: "{{ macos_homebrew_askpass_temp.path }}/askpass"
+            mode: '0700'
+
+        - name: Install missing casks as the normal account
+          ansible.builtin.command:
+            argv: "{{ [macos_homebrew_executable, 'install', '--cask'] + macos_missing_casks }}"
+          environment:
+            SUDO_ASKPASS: "{{ homebrew_sudo_askpass | default(macos_homebrew_askpass_temp.path ~ '/askpass', true) }}"
+          changed_when: true
+
+      always:
+        - name: Remove the temporary authentication helper
+          ansible.builtin.file:
+            path: "{{ macos_homebrew_askpass_temp.path }}"
+            state: absent
+          when: macos_homebrew_askpass_temp.path is defined

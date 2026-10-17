@@ -15,7 +15,7 @@ python = sys.executable
 ansible = shutil.which('ansible-playbook')
 assert ansible, 'Install Ansible and make ansible-playbook available on PATH.'
 brew = root / 'brew'
-brew.write_text('#!' + python + '\n' + r'''import json, pathlib, sys
+brew.write_text('#!' + python + '\n' + r'''import json, os, pathlib, sys
 root = pathlib.Path(__file__).parent
 args = sys.argv[1:]
 with (root / 'calls.jsonl').open('a') as log:
@@ -28,6 +28,10 @@ elif args[0] == 'list':
     kind = 'formula' if '--formula' in args else 'cask'
     print('\n'.join(data[kind]))
 elif args[0] == 'install':
+    if '--cask' in args:
+        askpass = pathlib.Path(os.environ['SUDO_ASKPASS'])
+        assert askpass.is_file() and askpass.stat().st_mode & 0o777 == 0o700
+        (root / 'askpass-path').write_text(str(askpass))
     kind = 'formula' if '--formula' in args else 'cask'
     data[kind] = sorted(set(data[kind] + args[2:]))
     state.write_text(json.dumps(data))
@@ -54,6 +58,7 @@ def run(name, playbook, variables=None, *flags, expected=0, inventory=None):
     if inventory is None:
         variables.setdefault('applications_enabled_categories', ['development'])
         variables.setdefault('applications_catalog', catalog)
+        variables.setdefault('applications_setup_categories', [])
     inventory_args = ['-i', str(inventory)] if inventory else []
     result = subprocess.run([ansible, *inventory_args, playbook,
                              '-e', json.dumps(variables), *flags],
@@ -68,8 +73,9 @@ for playbook in ['site.yml', 'applications.yml', 'terminal.yml', 'shell-paths.ym
 variables = {'homebrew_search_path': str(root)}
 assert 'changed=1' in run('fork-check', 'applications.yml', variables, '--check')
 assert not (root / 'installed').exists()
-assert 'changed=1' in run('fork-apply', 'applications.yml', variables)
+assert 'changed=4' in run('fork-apply', 'applications.yml', variables)
 assert (root / 'installed').read_text() == 'fork'
+assert not Path((root / 'askpass-path').read_text()).exists()
 assert 'changed=0' in run('fork-repeat', 'applications.yml', variables)
 assert 'changed=0' in run('fork-check-installed', 'applications.yml', variables, '--check')
 calls = [json.loads(line) for line in (root / 'calls.jsonl').read_text().splitlines()]

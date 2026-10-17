@@ -1,0 +1,4 @@
+#!/bin/sh
+# Homebrew invokes sudo from an Ansible worker without a controlling terminal.
+# Ask the logged-in macOS user directly; never persist or log the password.
+exec /usr/bin/osascript -e 'text returned of (display dialog "Homebrew needs administrator authorization to install a package. Enter your macOS account password:" default answer "" with hidden answer buttons {"Cancel", "Authorize"} default button "Authorize" with title "Workstation Bootstrap")'

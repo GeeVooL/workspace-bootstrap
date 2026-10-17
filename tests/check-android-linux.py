@@ -62,7 +62,7 @@ def values(home, system='Linux', arch='x86_64'):
                 ansible_facts={'system': system, 'architecture': arch, 'user_uid': os.getuid(),
                                'env': {'HOME': str(home), 'PATH': '/usr/bin:/bin'},
                                'distribution': 'Fedora', 'os_family': 'RedHat'},
-                applications_catalog={'android_development': {'linux': {'apps': apps}}},
+                applications_setup_categories=[], applications_catalog={'android_development': {'linux': {'apps': apps}}},
                 applications_enabled_categories=['android_development'],
                 applications_home=str(home), applications_search_path=str(home / 'bin'))
 
